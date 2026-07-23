@@ -88,3 +88,16 @@ browser.runtime.onMessage.addListener(async (message) => {
     await storage.set({ queue });
   }
 });
+
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url && tab.url.includes('youtube.com/watch')) {
+    const match = tab.url.match(/(?:v=|youtu\.be\/)([\w-]{11})/);
+    if (match) {
+      const activeId = match[1];
+      const settings = await browser.storage.local.get('storageMode');
+      const engine = settings.storageMode === 'sync' ? browser.storage.sync : browser.storage.local;
+      
+      await engine.set({ currentPlayingId: activeId });
+    }
+  }
+});
