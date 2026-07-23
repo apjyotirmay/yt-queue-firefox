@@ -1,0 +1,48 @@
+/* Animation trigger for dynamic element creation */
+@keyframes ytQueueThumbInserted {
+  from { opacity: 0.99; }
+  to { opacity: 1; }
+}
+
+ytd-thumbnail,
+.ytd-thumbnail,
+a#thumbnail {
+  animation-name: ytQueueThumbInserted !important;
+  animation-duration: 0.001s !important;
+}
+
+/* Extension Hover Button */
+.ext-yt-queue-btn {
+  position: absolute !important;
+  top: 8px !important;
+  left: 8px !important; /* Placed top-left so it doesn't overlap YouTube's top-right buttons */
+  z-index: 9999999 !important;
+  background: #ff0000 !important;
+  color: #ffffff !important;
+  border: none !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  font-weight: bold !important;
+  font-family: Roboto, Arial, sans-serif !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.15s ease, transform 0.1s ease !important;
+}
+
+/* Force visibility on hover */
+ytd-thumbnail:hover .ext-yt-queue-btn,
+.ytd-thumbnail:hover .ext-yt-queue-btn,
+a#thumbnail:hover .ext-yt-queue-btn,
+ytd-rich-grid-media:hover .ext-yt-queue-btn,
+ytd-compact-video-renderer:hover .ext-yt-queue-btn {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.ext-yt-queue-btn:hover {
+  background: #cc0000 !important;
+  transform: scale(1.08) !important;
+}

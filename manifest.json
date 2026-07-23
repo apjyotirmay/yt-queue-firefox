@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Queue Sidebar",
+  "version": "2.2",
+  "description": "Firefox sidebar queue manager with Alt+Click, Alt+Q, and Mozilla Sync.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "yt-queue-sidebar@jyotirmay.dev",
+      "strict_min_version": "109.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "sidebar_action": {
+    "default_title": "YouTube Queue",
+    "default_panel": "sidebar.html",
+    "default_icon": "icons/icon32.png"
+  },
+  "commands": {
+    "add-to-queue-hotkey": {
+      "suggested_key": {
+        "default": "Alt+Q"
+      },
+      "description": "Add hovered video or active tab to queue"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
