@@ -1,18 +1,18 @@
-const listEl = document.getElementById('queue-list');
-const playedListEl = document.getElementById('played-list');
-const playedSection = document.getElementById('played-section');
-const dropZone = document.getElementById('drop-zone');
-const clearBtn = document.getElementById('clear-btn');
-const afterPlaySelect = document.getElementById('after-play-mode');
-const storageModeSelect = document.getElementById('storage-mode');
-const counterBadge = document.getElementById('queue-counter');
-const playPauseBtn = document.getElementById('play-pause-btn');
-const nextBtn = document.getElementById('next-btn');
-const autoplayToggle = document.getElementById('autoplay-toggle');
-const playedToggleHeader = document.getElementById('played-toggle-header');
-const playedListContainer = document.getElementById('played-list-container');
-const playedArrow = document.getElementById('played-arrow');
-const playedCount = document.getElementById('played-count');
+const listEl = document.getElementById("queue-list");
+const playedListEl = document.getElementById("played-list");
+const playedSection = document.getElementById("played-section");
+const dropZone = document.getElementById("drop-zone");
+const clearBtn = document.getElementById("clear-btn");
+const keepPlayedToggle = document.getElementById("keep-played-toggle");
+const cloudSyncToggle = document.getElementById("cloud-sync-toggle");
+const counterBadge = document.getElementById("queue-counter");
+const playPauseBtn = document.getElementById("play-pause-btn");
+const nextBtn = document.getElementById("next-btn");
+const autoplayToggle = document.getElementById("autoplay-toggle");
+const playedToggleHeader = document.getElementById("played-toggle-header");
+const playedListContainer = document.getElementById("played-list-container");
+const playedArrow = document.getElementById("played-arrow");
+const playedCount = document.getElementById("played-count");
 
 let queue = [];
 let playedQueue = [];
@@ -22,52 +22,85 @@ let isPlayedSectionOpen = false;
 let isPlaying = false;
 
 async function getStorageEngine() {
-  const settings = await browser.storage.local.get(['storageMode', 'afterPlay']);
-  const mode = settings.storageMode || 'local';
-  storageModeSelect.value = mode;
-  afterPlaySelect.value = settings.afterPlay || 'remove';
-  return mode === 'sync' ? browser.storage.sync : browser.storage.local;
+  const settings = await browser.storage.local.get([
+    "storageMode",
+    "afterPlay",
+  ]);
+
+  const isSync = settings.storageMode === "sync";
+  const keepPlayed = (settings.afterPlay || "remove") === "keep";
+
+  if (cloudSyncToggle) cloudSyncToggle.checked = isSync;
+  if (keepPlayedToggle) keepPlayedToggle.checked = keepPlayed;
+
+  return isSync ? browser.storage.sync : browser.storage.local;
 }
 
 async function loadQueue() {
   activeStorage = await getStorageEngine();
-  const data = await activeStorage.get(['queue', 'playedQueue', 'currentPlayingId', 'isPlaying', 'autoplay']);
-  
+  const data = await activeStorage.get([
+    "queue",
+    "playedQueue",
+    "currentPlayingId",
+    "isPlaying",
+    "autoplay",
+  ]);
+
   queue = data.queue || [];
   playedQueue = data.playedQueue || [];
   currentPlayingId = data.currentPlayingId || null;
   autoplayToggle.checked = data.autoplay !== false;
-  
-  updatePlayButtonUI(!!data.isPlaying);
+
+  isPlaying = !!data.isPlaying;
+  updatePlayButtonUI(isPlaying);
+
   renderQueue();
 }
 
-autoplayToggle.addEventListener('change', async (e) => {
+autoplayToggle.addEventListener("change", async (e) => {
   await activeStorage.set({ autoplay: e.target.checked });
 });
 
-browser.storage.onChanged.addListener((changes) => {
-  if (changes.isPlaying) {
-    updatePlayButtonUI(!!changes.isPlaying.newValue);
-  }
-  loadQueue();
-});
-
-storageModeSelect.addEventListener('change', async (e) => {
-  const newMode = e.target.value;
+cloudSyncToggle.addEventListener("change", async (e) => {
+  const newMode = e.target.checked ? "sync" : "local";
   await browser.storage.local.set({ storageMode: newMode });
-  const targetStorage = newMode === 'sync' ? browser.storage.sync : browser.storage.local;
+
+  const targetStorage =
+    newMode === "sync" ? browser.storage.sync : browser.storage.local;
   await targetStorage.set({ queue, playedQueue, currentPlayingId });
   loadQueue();
 });
 
-afterPlaySelect.addEventListener('change', async (e) => {
-  await browser.storage.local.set({ afterPlay: e.target.value });
+keepPlayedToggle.addEventListener("change", async (e) => {
+  const newMode = e.target.checked ? "keep" : "remove";
+  await browser.storage.local.set({ afterPlay: newMode });
+  renderQueue();
 });
 
-clearBtn.addEventListener('click', async () => {
+// Real-time state listeners
+browser.storage.onChanged.addListener((changes) => {
+  if (changes.isPlaying) {
+    updatePlayButtonUI(!!changes.isPlaying.newValue);
+  }
+  if (changes.queue || changes.playedQueue || changes.currentPlayingId) {
+    loadQueue();
+  }
+});
+
+browser.runtime.onMessage.addListener((message) => {
+  if (
+    message.type === "PLAYER_STATE_CHANGED" ||
+    message.type === "PLAYER_STATUS"
+  ) {
+    if (message.isPlaying !== undefined) {
+      updatePlayButtonUI(!!message.isPlaying);
+    }
+  }
+});
+
+clearBtn.addEventListener("click", async () => {
   if (queue.length === 0 && playedQueue.length === 0) return;
-  
+
   const confirmed = confirm("Are you sure you want to clear your video queue?");
   if (confirmed) {
     queue = [];
@@ -80,28 +113,35 @@ clearBtn.addEventListener('click', async () => {
 
 function renderQueue() {
   while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
-  while (playedListEl.firstChild) playedListEl.removeChild(playedListEl.firstChild);
+  while (playedListEl.firstChild)
+    playedListEl.removeChild(playedListEl.firstChild);
 
   const total = queue.length + playedQueue.length;
-  let activeIndex = queue.findIndex(item => item.id === currentPlayingId);
-  
+  let activeIndex = queue.findIndex((item) => item.id === currentPlayingId);
+
+  const isQueueEmpty = queue.length === 0;
+  const isTotalEmpty = total === 0;
+
+  playPauseBtn.disabled = isQueueEmpty && !currentPlayingId;
+  nextBtn.disabled = isQueueEmpty;
+  clearBtn.disabled = isTotalEmpty;
+
   if (activeIndex !== -1) {
     counterBadge.textContent = `${playedQueue.length + activeIndex + 1}/${total}`;
-  } else if (playedQueue.some(item => item.id === currentPlayingId)) {
-    const pIdx = playedQueue.findIndex(item => item.id === currentPlayingId);
+  } else if (playedQueue.some((item) => item.id === currentPlayingId)) {
+    const pIdx = playedQueue.findIndex((item) => item.id === currentPlayingId);
     counterBadge.textContent = `${pIdx + 1}/${total}`;
   } else {
     counterBadge.textContent = total > 0 ? `0/${total}` : `0/0`;
   }
 
-  // Render Queue
   queue.forEach((item, index) => {
     const li = createVideoItem(item, index, false);
     listEl.appendChild(li);
   });
 
-  if (afterPlaySelect.value === 'keep' && playedQueue.length > 0) {
-    playedSection.style.display = 'block';
+  if (keepPlayedToggle.checked && playedQueue.length > 0) {
+    playedSection.style.display = "block";
     playedCount.textContent = playedQueue.length;
 
     playedQueue.forEach((item, index) => {
@@ -109,45 +149,45 @@ function renderQueue() {
       playedListEl.appendChild(li);
     });
   } else {
-    playedSection.style.display = 'none';
+    playedSection.style.display = "none";
   }
 
   updateFoldUI();
 }
 
 function createVideoItem(item, index, isPlayed) {
-  const li = document.createElement('li');
-  li.draggable = true; // Allow dragging for both active and played items
+  const li = document.createElement("li");
+  li.draggable = true;
   li.dataset.index = index;
-  li.dataset.isPlayed = isPlayed ? 'true' : 'false'; // Store origin section
+  li.dataset.isPlayed = isPlayed ? "true" : "false";
 
   if (item.id === currentPlayingId) {
-    li.classList.add('playing');
+    li.classList.add("playing");
   }
   if (isPlayed) {
-    li.classList.add('played-item');
+    li.classList.add("played-item");
   }
 
-  const img = document.createElement('img');
-  img.className = 'thumb-img';
+  const img = document.createElement("img");
+  img.className = "thumb-img";
   img.src = item.thumbnail || `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
-  img.addEventListener('click', () => playVideo(item, isPlayed));
+  img.addEventListener("click", () => playVideo(item, isPlayed));
 
-  const infoDiv = document.createElement('div');
-  infoDiv.className = 'info-container';
+  const infoDiv = document.createElement("div");
+  infoDiv.className = "info-container";
 
-  const titleSpan = document.createElement('span');
-  titleSpan.className = 'title';
-  titleSpan.title = item.title || 'YouTube Video';
-  titleSpan.textContent = item.title || 'YouTube Video';
-  titleSpan.addEventListener('click', () => playVideo(item, isPlayed));
+  const titleSpan = document.createElement("span");
+  titleSpan.className = "title";
+  titleSpan.title = item.title || "YouTube Video";
+  titleSpan.textContent = item.title || "YouTube Video";
+  titleSpan.addEventListener("click", () => playVideo(item, isPlayed));
 
   infoDiv.appendChild(titleSpan);
 
-  const removeBtn = document.createElement('button');
-  removeBtn.className = 'remove-btn';
-  removeBtn.textContent = '✕';
-  removeBtn.addEventListener('click', async () => {
+  const removeBtn = document.createElement("button");
+  removeBtn.className = "remove-btn";
+  removeBtn.textContent = "✕";
+  removeBtn.addEventListener("click", async () => {
     if (isPlayed) {
       playedQueue.splice(index, 1);
     } else {
@@ -161,30 +201,25 @@ function createVideoItem(item, index, isPlayed) {
   li.appendChild(infoDiv);
   li.appendChild(removeBtn);
 
-  // Drag and Drop Logic
-  li.addEventListener('dragstart', (e) => {
-    // Pass both the index and whether the item is from the played section
-    e.dataTransfer.setData('text/plain', JSON.stringify({ index, isPlayed }));
+  li.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData("text/plain", JSON.stringify({ index, isPlayed }));
   });
 
-  // Only allow dropping onto active "Up Next" items
   if (!isPlayed) {
-    li.addEventListener('dragover', (e) => e.preventDefault());
-    li.addEventListener('drop', async (e) => {
+    li.addEventListener("dragover", (e) => e.preventDefault());
+    li.addEventListener("drop", async (e) => {
       e.preventDefault();
       try {
-        const dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const dragData = JSON.parse(e.dataTransfer.getData("text/plain"));
         const fromIdx = dragData.index;
         const fromPlayed = dragData.isPlayed;
 
         if (isNaN(fromIdx)) return;
 
         if (fromPlayed) {
-          // Move item out of Played Queue and insert into Up Next queue at drop target
           const [movedItem] = playedQueue.splice(fromIdx, 1);
           queue.splice(index, 0, movedItem);
         } else {
-          // Re-order within Up Next queue
           const [movedItem] = queue.splice(fromIdx, 1);
           queue.splice(index, 0, movedItem);
         }
@@ -201,38 +236,34 @@ function createVideoItem(item, index, isPlayed) {
 }
 
 async function playVideo(item, isPlayed = false) {
-  const afterPlayMode = (await browser.storage.local.get('afterPlay')).afterPlay || 'remove';
+  const afterPlayMode =
+    (await browser.storage.local.get("afterPlay")).afterPlay || "remove";
 
   if (isPlayed) {
-    // 1. If re-watching a played video, move it out of Played section...
-    playedQueue = playedQueue.filter(i => i.id !== item.id);
-    
-    // ...and archive whatever was currently playing
+    playedQueue = playedQueue.filter((i) => i.id !== item.id);
+
     if (currentPlayingId) {
-      const activeIdx = queue.findIndex(i => i.id === currentPlayingId);
+      const activeIdx = queue.findIndex((i) => i.id === currentPlayingId);
       if (activeIdx !== -1) {
         const [prevPlaying] = queue.splice(activeIdx, 1);
-        if (afterPlayMode === 'keep') playedQueue.push(prevPlaying);
+        if (afterPlayMode === "keep") playedQueue.push(prevPlaying);
       }
     }
 
-    // Put re-watched video at top of Up Next queue
-    queue = queue.filter(i => i.id !== item.id);
+    queue = queue.filter((i) => i.id !== item.id);
     queue.unshift(item);
   } else {
-    // 2. If picking a new video from Up Next while something else is playing...
     if (currentPlayingId && currentPlayingId !== item.id) {
-      const activeIdx = queue.findIndex(i => i.id === currentPlayingId);
+      const activeIdx = queue.findIndex((i) => i.id === currentPlayingId);
       if (activeIdx !== -1) {
         const [prevPlaying] = queue.splice(activeIdx, 1);
-        if (afterPlayMode === 'keep') {
-          playedQueue.push(prevPlaying); // Move old active video to Played section
+        if (afterPlayMode === "keep") {
+          playedQueue.push(prevPlaying);
         }
       }
     }
 
-    // Move new selection to top of queue (index 0) so it stays highlighted
-    const qIndex = queue.findIndex(i => i.id === item.id);
+    const qIndex = queue.findIndex((i) => i.id === item.id);
     if (qIndex !== -1) {
       const [selected] = queue.splice(qIndex, 1);
       queue.unshift(selected);
@@ -244,13 +275,19 @@ async function playVideo(item, isPlayed = false) {
   await activeStorage.set({ queue, playedQueue, currentPlayingId });
   renderQueue();
 
-  // Send request to launch/update player tab
-  // Add an optional focus parameter to control active tab switching
-  browser.runtime.sendMessage({ type: 'PLAY_VIDEO', url: item.url, focus: false });
+  browser.runtime.sendMessage({
+    type: "PLAY_VIDEO",
+    url: item.url,
+    focus: false,
+  });
 }
 
-playPauseBtn.addEventListener('click', async () => {
-  const data = await activeStorage.get(['queue', 'currentPlayingId', 'isPlaying']);
+playPauseBtn.addEventListener("click", async () => {
+  const data = await activeStorage.get([
+    "queue",
+    "currentPlayingId",
+    "isPlaying",
+  ]);
   const currentQueue = data.queue || [];
 
   if (!data.currentPlayingId && currentQueue.length > 0) {
@@ -258,29 +295,31 @@ playPauseBtn.addEventListener('click', async () => {
     return;
   }
 
-  browser.runtime.sendMessage({ type: 'CONTROL_PLAYER', command: 'TOGGLE' });
+  browser.runtime.sendMessage({ type: "CONTROL_PLAYER", command: "TOGGLE" });
 });
 
-// Skip to Next Video action
-nextBtn.addEventListener('click', async () => {
+nextBtn.addEventListener("click", async () => {
   const activeStorage = await getStorageEngine();
-  const data = await activeStorage.get(['queue', 'playedQueue', 'currentPlayingId']);
+  const data = await activeStorage.get([
+    "queue",
+    "playedQueue",
+    "currentPlayingId",
+  ]);
   let q = data.queue || [];
   let pq = data.playedQueue || [];
-  const afterPlayMode = (await browser.storage.local.get('afterPlay')).afterPlay || 'remove';
+  const afterPlayMode =
+    (await browser.storage.local.get("afterPlay")).afterPlay || "remove";
 
   if (q.length === 0) return;
 
-  // Move currently active video to Played section
-  const activeIdx = q.findIndex(item => item.id === currentPlayingId);
+  const activeIdx = q.findIndex((item) => item.id === currentPlayingId);
   if (activeIdx !== -1) {
     const [finished] = q.splice(activeIdx, 1);
-    if (afterPlayMode === 'keep') {
+    if (afterPlayMode === "keep") {
       pq.push(finished);
     }
   }
 
-  // Play next video in queue
   if (q.length > 0) {
     queue = q;
     playedQueue = pq;
@@ -290,18 +329,23 @@ nextBtn.addEventListener('click', async () => {
     queue = [];
     playedQueue = pq;
     currentPlayingId = null;
-    await activeStorage.set({ queue, playedQueue, currentPlayingId, isPlaying: false });
+    await activeStorage.set({
+      queue,
+      playedQueue,
+      currentPlayingId,
+      isPlaying: false,
+    });
     renderQueue();
   }
 });
 
 async function loadFoldState() {
-  const settings = await browser.storage.local.get('isPlayedSectionOpen');
+  const settings = await browser.storage.local.get("isPlayedSectionOpen");
   isPlayedSectionOpen = settings.isPlayedSectionOpen || false;
   updateFoldUI();
 }
 
-playedToggleHeader.addEventListener('click', async () => {
+playedToggleHeader.addEventListener("click", async () => {
   isPlayedSectionOpen = !isPlayedSectionOpen;
   await browser.storage.local.set({ isPlayedSectionOpen });
   updateFoldUI();
@@ -309,42 +353,40 @@ playedToggleHeader.addEventListener('click', async () => {
 
 function updateFoldUI() {
   if (isPlayedSectionOpen) {
-    playedListContainer.classList.remove('collapsed');
-    playedArrow.textContent = '▾';
+    playedListContainer.classList.remove("collapsed");
+    playedArrow.textContent = "▾";
   } else {
-    playedListContainer.classList.add('collapsed');
-    playedArrow.textContent = '▸';
+    playedListContainer.classList.add("collapsed");
+    playedArrow.textContent = "▸";
   }
 }
 
 function updatePlayButtonUI(playing) {
   isPlaying = playing;
   if (isPlaying) {
-    playPauseBtn.textContent = '❚❚ Pause';
-    playPauseBtn.classList.add('playing-state');
+    playPauseBtn.textContent = "❚❚ Pause";
+    playPauseBtn.classList.add("playing-state");
   } else {
-    playPauseBtn.textContent = '▶ Play';
-    playPauseBtn.classList.remove('playing-state');
+    playPauseBtn.textContent = "▶ Play";
+    playPauseBtn.classList.remove("playing-state");
   }
 }
 
 loadQueue();
 loadFoldState();
 
-// Allow dropping items into the general Up Next list area
-listEl.addEventListener('dragover', (e) => e.preventDefault());
-listEl.addEventListener('drop', async (e) => {
-  // Only handle if dropped in empty space of list
+listEl.addEventListener("dragover", (e) => e.preventDefault());
+listEl.addEventListener("drop", async (e) => {
   if (e.target === listEl) {
     e.preventDefault();
     try {
-      const dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
+      const dragData = JSON.parse(e.dataTransfer.getData("text/plain"));
       const fromIdx = dragData.index;
       const fromPlayed = dragData.isPlayed;
 
       if (fromPlayed && !isNaN(fromIdx)) {
         const [movedItem] = playedQueue.splice(fromIdx, 1);
-        queue.push(movedItem); // Append to the end of Up Next
+        queue.push(movedItem);
         await activeStorage.set({ queue, playedQueue });
         renderQueue();
       }
