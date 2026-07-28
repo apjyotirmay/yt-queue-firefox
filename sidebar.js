@@ -21,7 +21,10 @@ let activeStorage = browser.storage.local;
 let isPlayedSectionOpen = false;
 let isPlaying = false;
 
-// Helper to extract YouTube video ID from arbitrary link structures
+// Flags and locks to prevent race conditions & double additions
+let isSelfSaving = false;
+const pendingAdds = new Set();
+
 function extractVideoId(urlStr) {
   try {
     const url = new URL(urlStr);
@@ -36,13 +39,162 @@ function extractVideoId(urlStr) {
   return null;
 }
 
-// Helper to clear blue insertion indicator lines across the list
+// Fetch real title directly from YouTube oEmbed if title is missing
+async function fetchVideoTitle(videoId) {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+    );
+    if (res.ok) {
+      const data = await res.json();
+      return data.title || "YouTube Video";
+    }
+  } catch (e) {
+    console.warn("Could not fetch YouTube title via oEmbed", e);
+  }
+  return "YouTube Video";
+}
+
 function clearDragIndicators() {
   document
     .querySelectorAll(".drag-over-above, .drag-over-below")
     .forEach((el) => {
       el.classList.remove("drag-over-above", "drag-over-below");
     });
+}
+
+function showToast(message) {
+  let toast = document.getElementById("sidebar-toast");
+
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "sidebar-toast";
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #282828;
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 18px;
+      font-size: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      z-index: 9999;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
+    `;
+    document.body.appendChild(toast);
+  }
+
+  toast.textContent = message;
+  toast.style.opacity = "1";
+
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => {
+    toast.style.opacity = "0";
+  }, 2200);
+}
+
+function highlightVideoItem(videoId) {
+  requestAnimationFrame(() => {
+    const items = listEl.querySelectorAll("li");
+    items.forEach((li) => {
+      if (li.dataset.id === videoId) {
+        li.style.transition = "background-color 0.3s ease";
+        li.style.backgroundColor = "rgba(62, 166, 255, 0.25)";
+        setTimeout(() => {
+          li.style.backgroundColor = "";
+        }, 1200);
+      }
+    });
+  });
+}
+
+// Save queue helper with self-save flag protection
+async function saveState() {
+  isSelfSaving = true;
+  await activeStorage.set({ queue, playedQueue, currentPlayingId });
+  setTimeout(() => {
+    isSelfSaving = false;
+  }, 200);
+}
+
+// Synchronous check & async process to handle queue additions reliably
+async function addVideoToQueue(newVideo, targetIndex = null) {
+  if (!newVideo || !newVideo.id) return;
+
+  const videoId = newVideo.id;
+
+  // Lock: Block rapid duplicate calls for the exact same video
+  if (pendingAdds.has(videoId)) return;
+  pendingAdds.add(videoId);
+
+  setTimeout(() => {
+    pendingAdds.delete(videoId);
+  }, 1000);
+
+  // If title is missing or generic, attempt to fetch the real title
+  if (!newVideo.title || newVideo.title === "YouTube Video") {
+    newVideo.title = await fetchVideoTitle(videoId);
+  }
+
+  const existingIdx = queue.findIndex((item) => item.id === videoId);
+  const playedIdx = playedQueue.findIndex((item) => item.id === videoId);
+
+  // Case 1: Video is currently in Played History -> Restore it
+  if (playedIdx !== -1) {
+    const [restored] = playedQueue.splice(playedIdx, 1);
+    const itemToInsert = {
+      ...restored,
+      ...newVideo,
+      title: newVideo.title || restored.title,
+    };
+
+    if (targetIndex !== null) {
+      queue.splice(targetIndex, 0, itemToInsert);
+    } else {
+      queue.push(itemToInsert);
+    }
+    showToast("Restored video from played history");
+  }
+  // Case 2: Video already exists in Queue -> Update title & reposition
+  else if (existingIdx !== -1) {
+    const existingItem = queue[existingIdx];
+    const mergedItem = {
+      ...existingItem,
+      ...newVideo,
+      title: newVideo.title || existingItem.title,
+    };
+
+    if (targetIndex !== null) {
+      queue.splice(existingIdx, 1);
+      const insertAt =
+        existingIdx < targetIndex ? targetIndex - 1 : targetIndex;
+      queue.splice(insertAt, 0, mergedItem);
+      showToast("Updated video position");
+    } else {
+      queue[existingIdx] = mergedItem;
+      showToast("Video already in queue");
+    }
+  }
+  // Case 3: Completely New Video
+  else {
+    const itemToInsert = {
+      ...newVideo,
+      title: newVideo.title || "YouTube Video",
+    };
+
+    if (targetIndex !== null) {
+      queue.splice(targetIndex, 0, itemToInsert);
+    } else {
+      queue.push(itemToInsert);
+    }
+  }
+
+  await saveState();
+  renderQueue();
+  highlightVideoItem(videoId);
 }
 
 async function getStorageEngine() {
@@ -101,8 +253,10 @@ keepPlayedToggle.addEventListener("change", async (e) => {
   renderQueue();
 });
 
-// Real-time state listeners
+// Storage change listener guarded against self-saved changes
 browser.storage.onChanged.addListener((changes) => {
+  if (isSelfSaving) return;
+
   if (changes.isPlaying) {
     updatePlayButtonUI(!!changes.isPlaying.newValue);
   }
@@ -111,7 +265,12 @@ browser.storage.onChanged.addListener((changes) => {
   }
 });
 
+// Runtime messages from background / content scripts
 browser.runtime.onMessage.addListener((message) => {
+  if (message.type === "ADD_TO_QUEUE" && message.video) {
+    addVideoToQueue(message.video);
+    return;
+  }
   if (
     message.type === "PLAYER_STATE_CHANGED" ||
     message.type === "PLAYER_STATUS"
@@ -130,7 +289,7 @@ clearBtn.addEventListener("click", async () => {
     queue = [];
     playedQueue = [];
     currentPlayingId = null;
-    await activeStorage.set({ queue, playedQueue, currentPlayingId });
+    await saveState();
     renderQueue();
   }
 });
@@ -183,6 +342,7 @@ function createVideoItem(item, index, isPlayed) {
   const li = document.createElement("li");
   li.draggable = true;
   li.dataset.index = index;
+  li.dataset.id = item.id;
   li.dataset.isPlayed = isPlayed ? "true" : "false";
 
   if (item.id === currentPlayingId) {
@@ -217,7 +377,7 @@ function createVideoItem(item, index, isPlayed) {
     } else {
       queue.splice(index, 1);
     }
-    await activeStorage.set({ queue, playedQueue });
+    await saveState();
     renderQueue();
   });
 
@@ -225,7 +385,7 @@ function createVideoItem(item, index, isPlayed) {
   li.appendChild(infoDiv);
   li.appendChild(removeBtn);
 
-  // Drag Start: Dim item and attach drag payload
+  // Drag Start
   li.addEventListener("dragstart", (e) => {
     li.classList.add("dragging");
     const payload = JSON.stringify({ index, isPlayed });
@@ -233,14 +393,14 @@ function createVideoItem(item, index, isPlayed) {
     e.dataTransfer.setData("text/plain", payload);
   });
 
-  // Drag End: Cleanup drag state
+  // Drag End
   li.addEventListener("dragend", () => {
     li.classList.remove("dragging");
     clearDragIndicators();
   });
 
   if (!isPlayed) {
-    // Drag Over: Provide real-time insertion indicator
+    // Drag Over
     li.addEventListener("dragover", (e) => {
       e.preventDefault();
       const rect = li.getBoundingClientRect();
@@ -259,7 +419,7 @@ function createVideoItem(item, index, isPlayed) {
       li.classList.remove("drag-over-above", "drag-over-below");
     });
 
-    // Drop Handler: Insert exactly where indicated by hover position
+    // Drop Handler
     li.addEventListener("drop", async (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -276,28 +436,44 @@ function createVideoItem(item, index, isPlayed) {
           e.dataTransfer.getData("text/plain");
 
         if (!rawData) return;
-        const dragData = JSON.parse(rawData);
-        const fromIdx = dragData.index;
-        const fromPlayed = dragData.isPlayed;
 
-        if (isNaN(fromIdx)) return;
+        // Internal list reorder
+        if (rawData.startsWith("{")) {
+          const dragData = JSON.parse(rawData);
+          const fromIdx = dragData.index;
+          const fromPlayed = dragData.isPlayed;
 
-        let targetIdx = isAbove ? index : index + 1;
+          if (isNaN(fromIdx)) return;
 
-        if (fromPlayed) {
-          const [movedItem] = playedQueue.splice(fromIdx, 1);
-          queue.splice(targetIdx, 0, movedItem);
+          let targetIdx = isAbove ? index : index + 1;
+
+          if (fromPlayed) {
+            const [movedItem] = playedQueue.splice(fromIdx, 1);
+            queue.splice(targetIdx, 0, movedItem);
+          } else {
+            if (fromIdx < targetIdx) targetIdx--;
+            const [movedItem] = queue.splice(fromIdx, 1);
+            queue.splice(targetIdx, 0, movedItem);
+          }
+
+          await saveState();
+          renderQueue();
         } else {
-          // Adjust target offset if moving an item further down in the same list
-          if (fromIdx < targetIdx) targetIdx--;
-          const [movedItem] = queue.splice(fromIdx, 1);
-          queue.splice(targetIdx, 0, movedItem);
+          // Dropped external link directly onto item
+          const videoId = extractVideoId(rawData);
+          if (videoId) {
+            let targetIdx = isAbove ? index : index + 1;
+            await addVideoToQueue(
+              {
+                id: videoId,
+                url: `https://www.youtube.com/watch?v=${videoId}`,
+              },
+              targetIdx,
+            );
+          }
         }
-
-        await activeStorage.set({ queue, playedQueue });
-        renderQueue();
       } catch (err) {
-        console.error("Internal list drop error:", err);
+        console.error("List drop error:", err);
       }
     });
   }
@@ -307,10 +483,8 @@ function createVideoItem(item, index, isPlayed) {
 
 async function playVideo(item, isPlayed = false) {
   if (isPlayed) {
-    // 1. Remove selected item from playedQueue
     playedQueue = playedQueue.filter((i) => i.id !== item.id);
 
-    // 2. Extract current playing video from queue (if present)
     let currentlyPlayingItem = null;
     if (currentPlayingId) {
       const activeIdx = queue.findIndex((i) => i.id === currentPlayingId);
@@ -319,35 +493,26 @@ async function playVideo(item, isPlayed = false) {
       }
     }
 
-    // Deduplicate in queue
     queue = queue.filter((i) => i.id !== item.id);
-
-    // 3. Put restored played video at Index 0 (Now Playing)
     queue.unshift(item);
 
-    // 4. Put previous active video right next to it at Index 1 (Up Next)
     if (currentlyPlayingItem && currentlyPlayingItem.id !== item.id) {
       queue.splice(1, 0, currentlyPlayingItem);
     }
   } else {
-    // Clicking an item inside the main queue
     if (currentPlayingId && currentPlayingId !== item.id) {
       const activeIdx = queue.findIndex((i) => i.id === currentPlayingId);
       const clickedIdx = queue.findIndex((i) => i.id === item.id);
 
       if (activeIdx !== -1 && clickedIdx !== -1) {
-        // Move clicked item to index 0 (Now Playing)
         const [selected] = queue.splice(clickedIdx, 1);
         queue.unshift(selected);
       }
     }
   }
 
-  // Set active ID
   currentPlayingId = item.id;
-
-  // Persist and update UI
-  await activeStorage.set({ queue, playedQueue, currentPlayingId });
+  await saveState();
   renderQueue();
 
   browser.runtime.sendMessage({
@@ -398,18 +563,22 @@ nextBtn.addEventListener("click", async () => {
   if (q.length > 0) {
     queue = q;
     playedQueue = pq;
-    await activeStorage.set({ queue, playedQueue });
+    await saveState();
     playVideo(queue[0]);
   } else {
     queue = [];
     playedQueue = pq;
     currentPlayingId = null;
+    isSelfSaving = true;
     await activeStorage.set({
       queue,
       playedQueue,
       currentPlayingId,
       isPlaying: false,
     });
+    setTimeout(() => {
+      isSelfSaving = false;
+    }, 200);
     renderQueue();
   }
 });
@@ -450,7 +619,7 @@ function updatePlayButtonUI(playing) {
 loadQueue();
 loadFoldState();
 
-// Global listeners to accept external video drag-and-drop into the sidebar
+// Global dragover handler
 ["dragenter", "dragover"].forEach((eventName) => {
   document.addEventListener(
     eventName,
@@ -462,19 +631,18 @@ loadFoldState();
   );
 });
 
+// Single global drop event listener
 document.addEventListener("drop", async (e) => {
-  // If the drop target is handling an internal list reorder, ignore global handling
-  if (e.dataTransfer.getData("application/json")) return;
+  const internalData = e.dataTransfer.getData("application/json");
+  if (internalData && internalData.startsWith("{")) return;
 
   e.preventDefault();
   e.stopPropagation();
 
-  // Extract link from URI or text transfer
   let droppedUrl =
     e.dataTransfer.getData("text/uri-list") ||
     e.dataTransfer.getData("text/plain");
 
-  // Fallback: search raw HTML string for watch URLs (dragging YouTube cards/thumbnails)
   if (!droppedUrl) {
     const htmlData = e.dataTransfer.getData("text/html");
     if (htmlData) {
@@ -486,38 +654,12 @@ document.addEventListener("drop", async (e) => {
   if (droppedUrl) {
     const videoId = extractVideoId(droppedUrl);
     if (videoId) {
-      browser.runtime.sendMessage({
-        type: "ADD_TO_QUEUE",
-        video: {
-          id: videoId,
-          url: `https://www.youtube.com/watch?v=${videoId}`,
-          title: "",
-        },
+      await addVideoToQueue({
+        id: videoId,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
       });
     }
   }
 });
 
 listEl.addEventListener("dragover", (e) => e.preventDefault());
-listEl.addEventListener("drop", async (e) => {
-  if (e.target === listEl) {
-    e.preventDefault();
-    try {
-      const rawData = e.dataTransfer.getData("application/json");
-      if (!rawData) return;
-
-      const dragData = JSON.parse(rawData);
-      const fromIdx = dragData.index;
-      const fromPlayed = dragData.isPlayed;
-
-      if (fromPlayed && !isNaN(fromIdx)) {
-        const [movedItem] = playedQueue.splice(fromIdx, 1);
-        queue.push(movedItem);
-        await activeStorage.set({ queue, playedQueue });
-        renderQueue();
-      }
-    } catch (err) {
-      console.error("List area drop error:", err);
-    }
-  }
-});
