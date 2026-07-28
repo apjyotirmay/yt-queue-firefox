@@ -21,6 +21,21 @@ let activeStorage = browser.storage.local;
 let isPlayedSectionOpen = false;
 let isPlaying = false;
 
+// Helper to extract YouTube video ID from arbitrary link structures
+function extractVideoId(urlStr) {
+  try {
+    const url = new URL(urlStr);
+    if (url.hostname.includes("youtube.com")) {
+      return url.searchParams.get("v");
+    } else if (url.hostname.includes("youtu.be")) {
+      return url.pathname.slice(1);
+    }
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
 async function getStorageEngine() {
   const settings = await browser.storage.local.get([
     "storageMode",
@@ -202,15 +217,23 @@ function createVideoItem(item, index, isPlayed) {
   li.appendChild(removeBtn);
 
   li.addEventListener("dragstart", (e) => {
-    e.dataTransfer.setData("text/plain", JSON.stringify({ index, isPlayed }));
+    const payload = JSON.stringify({ index, isPlayed });
+    e.dataTransfer.setData("application/json", payload);
+    e.dataTransfer.setData("text/plain", payload);
   });
 
   if (!isPlayed) {
     li.addEventListener("dragover", (e) => e.preventDefault());
     li.addEventListener("drop", async (e) => {
       e.preventDefault();
+      e.stopPropagation();
       try {
-        const dragData = JSON.parse(e.dataTransfer.getData("text/plain"));
+        const rawData =
+          e.dataTransfer.getData("application/json") ||
+          e.dataTransfer.getData("text/plain");
+
+        if (!rawData) return;
+        const dragData = JSON.parse(rawData);
         const fromIdx = dragData.index;
         const fromPlayed = dragData.isPlayed;
 
@@ -227,7 +250,7 @@ function createVideoItem(item, index, isPlayed) {
         await activeStorage.set({ queue, playedQueue });
         renderQueue();
       } catch (err) {
-        console.error("Drop handling error:", err);
+        console.error("Internal list drop error:", err);
       }
     });
   }
@@ -269,8 +292,6 @@ async function playVideo(item, isPlayed = false) {
         // Move clicked item to index 0 (Now Playing)
         const [selected] = queue.splice(clickedIdx, 1);
         queue.unshift(selected);
-
-        // Note: The previous active video naturally shifts down in the array!
       }
     }
   }
@@ -382,12 +403,63 @@ function updatePlayButtonUI(playing) {
 loadQueue();
 loadFoldState();
 
+// Global listeners to accept external video drag-and-drop into the sidebar
+["dragenter", "dragover"].forEach((eventName) => {
+  document.addEventListener(
+    eventName,
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    false,
+  );
+});
+
+document.addEventListener("drop", async (e) => {
+  // If the drop target is handling an internal list reorder, ignore global handling
+  if (e.dataTransfer.getData("application/json")) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  // Extract link from URI or text transfer
+  let droppedUrl =
+    e.dataTransfer.getData("text/uri-list") ||
+    e.dataTransfer.getData("text/plain");
+
+  // Fallback: search raw HTML string for watch URLs (dragging YouTube cards/thumbnails)
+  if (!droppedUrl) {
+    const htmlData = e.dataTransfer.getData("text/html");
+    if (htmlData) {
+      const match = htmlData.match(/href=["']([^"']*watch\?v=[^"']*)["']/);
+      if (match) droppedUrl = match[1];
+    }
+  }
+
+  if (droppedUrl) {
+    const videoId = extractVideoId(droppedUrl);
+    if (videoId) {
+      browser.runtime.sendMessage({
+        type: "ADD_TO_QUEUE",
+        video: {
+          id: videoId,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          title: "",
+        },
+      });
+    }
+  }
+});
+
 listEl.addEventListener("dragover", (e) => e.preventDefault());
 listEl.addEventListener("drop", async (e) => {
   if (e.target === listEl) {
     e.preventDefault();
     try {
-      const dragData = JSON.parse(e.dataTransfer.getData("text/plain"));
+      const rawData = e.dataTransfer.getData("application/json");
+      if (!rawData) return;
+
+      const dragData = JSON.parse(rawData);
       const fromIdx = dragData.index;
       const fromPlayed = dragData.isPlayed;
 
