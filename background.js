@@ -31,6 +31,14 @@ async function fetchVideoTitle(videoId) {
   return `Video (${videoId})`;
 }
 
+// Track tab closure to reset playerTabId cleanly in storage
+browser.tabs.onRemoved.addListener(async (tabId) => {
+  const { playerTabId } = await browser.storage.local.get('playerTabId');
+  if (tabId === playerTabId) {
+    await browser.storage.local.set({ playerTabId: null });
+  }
+});
+
 browser.runtime.onInstalled.addListener(() => {
   browser.contextMenus.create({
     id: "add-to-queue",
@@ -68,36 +76,128 @@ browser.commands.onCommand.addListener(async (command) => {
   }
 });
 
-browser.runtime.onMessage.addListener(async (message) => {
-  if (message.type === 'ADD_TO_QUEUE') {
-    const storage = await getStorageEngine();
-    let title = message.video.title;
-    
-    if (!title || title.startsWith("Video (")) {
-      title = await fetchVideoTitle(message.video.id);
-    }
-
-    const { queue = [] } = await storage.get('queue');
-    queue.push({ 
-      id: message.video.id, 
-      title, 
-      url: message.video.url,
-      thumbnail: `https://i.ytimg.com/vi/${message.video.id}/hqdefault.jpg`
-    });
-    
-    await storage.set({ queue });
-  }
-});
-
+// Update active video ID in storage when the player tab navigates to a video
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url && tab.url.includes('youtube.com/watch')) {
+  const { playerTabId } = await browser.storage.local.get('playerTabId');
+  if (tabId === playerTabId && changeInfo.status === 'complete' && tab.url && tab.url.includes('youtube.com/watch')) {
     const match = tab.url.match(/(?:v=|youtu\.be\/)([\w-]{11})/);
     if (match) {
       const activeId = match[1];
-      const settings = await browser.storage.local.get('storageMode');
-      const engine = settings.storageMode === 'sync' ? browser.storage.sync : browser.storage.local;
-      
-      await engine.set({ currentPlayingId: activeId });
+      const storage = await getStorageEngine();
+      await storage.set({ currentPlayingId: activeId });
     }
+  }
+});
+
+browser.runtime.onMessage.addListener(async (message) => {
+  const activeStorage = await getStorageEngine();
+
+  // Helper: Ensures video loads in existing player tab OR launches/updates in background
+  async function loadInPlayerTab(url, active = true) {
+    let tabExists = false;
+    let { playerTabId } = await browser.storage.local.get('playerTabId');
+
+    if (playerTabId) {
+      try {
+        await browser.tabs.get(playerTabId);
+        // 'active: false' prevents switching focus away from your active tab
+        await browser.tabs.update(playerTabId, { url, active });
+        tabExists = true;
+      } catch (e) {
+        playerTabId = null;
+        await browser.storage.local.set({ playerTabId: null });
+      }
+    }
+
+    if (!tabExists) {
+      // Create tab without focusing it if active is false
+      const tab = await browser.tabs.create({ url, active });
+      await browser.storage.local.set({ playerTabId: tab.id });
+    }
+  }
+
+  // 1. PLAY_VIDEO: Triggered by clicking an item or starting playback
+  if (message.type === 'PLAY_VIDEO') {
+    const shouldFocus = message.focus !== undefined ? message.focus : true;
+    await loadInPlayerTab(message.url, shouldFocus);
+    await activeStorage.set({ isPlaying: true });
+  }
+
+  // 2. CONTROL_PLAYER: Play / Pause toggle
+  if (message.type === 'CONTROL_PLAYER') {
+    let tabExists = false;
+    let { playerTabId } = await browser.storage.local.get('playerTabId');
+
+    if (playerTabId) {
+      try {
+        await browser.tabs.get(playerTabId);
+        await browser.tabs.sendMessage(playerTabId, { command: message.command });
+        tabExists = true;
+      } catch (e) {
+        await browser.storage.local.set({ playerTabId: null });
+      }
+    }
+
+    // Fallback: If no player tab exists when clicking Play, launch the top/active video
+    if (!tabExists) {
+      const data = await activeStorage.get(['queue', 'currentPlayingId']);
+      const queue = data.queue || [];
+      const targetVideo = queue.find(i => i.id === data.currentPlayingId) || queue[0];
+
+      if (targetVideo) {
+        await loadInPlayerTab(targetVideo.url);
+        await activeStorage.set({ isPlaying: true, currentPlayingId: targetVideo.id });
+      }
+    }
+  }
+
+  // 3. VIDEO_ENDED: Automatically move active video to played and launch next in background
+  if (message.type === 'VIDEO_ENDED') {
+    const data = await activeStorage.get(['queue', 'playedQueue', 'autoplay', 'currentPlayingId']);
+    const isAutoplayEnabled = data.autoplay !== false;
+
+    let queue = data.queue || [];
+    let playedQueue = data.playedQueue || [];
+    const afterPlayMode = (await browser.storage.local.get('afterPlay')).afterPlay || 'remove';
+
+    if (queue.length > 0) {
+      const activeIdx = queue.findIndex(i => i.id === data.currentPlayingId);
+      const finishedVideo = activeIdx !== -1 ? queue.splice(activeIdx, 1)[0] : queue.shift();
+
+      if (afterPlayMode === 'keep' && finishedVideo) {
+        playedQueue.push(finishedVideo);
+      }
+
+      if (isAutoplayEnabled && queue.length > 0) {
+        const nextVideo = queue[0];
+        await activeStorage.set({ queue, playedQueue, currentPlayingId: nextVideo.id, isPlaying: true });
+        
+        // Pass 'false' as second parameter to load in background without stealing focus
+        await loadInPlayerTab(nextVideo.url, false);
+      } else {
+        await activeStorage.set({ queue, playedQueue, currentPlayingId: null, isPlaying: false });
+      }
+    }
+  }
+
+  // 4. Status & Queue additions
+  if (message.type === 'PLAYER_STATUS') {
+    await activeStorage.set({ isPlaying: message.isPlaying });
+  }
+
+  if (message.type === 'ADD_TO_QUEUE') {
+    const storage = await getStorageEngine();
+    let title = message.video.title;
+    if (!title || title.startsWith("Video (")) {
+      title = await fetchVideoTitle(message.video.id);
+    }
+    const { queue = [] } = await storage.get('queue');
+    queue.push({
+      id: message.video.id,
+      title,
+      url: message.video.url,
+      thumbnail: `https://i.ytimg.com/vi/${message.video.id}/hqdefault.jpg`
+    });
+    await storage.set({ queue });
   }
 });

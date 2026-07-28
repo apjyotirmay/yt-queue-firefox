@@ -2,16 +2,24 @@ const listEl = document.getElementById('queue-list');
 const playedListEl = document.getElementById('played-list');
 const playedSection = document.getElementById('played-section');
 const dropZone = document.getElementById('drop-zone');
-const playBtn = document.getElementById('play-btn');
 const clearBtn = document.getElementById('clear-btn');
 const afterPlaySelect = document.getElementById('after-play-mode');
 const storageModeSelect = document.getElementById('storage-mode');
 const counterBadge = document.getElementById('queue-counter');
+const playPauseBtn = document.getElementById('play-pause-btn');
+const nextBtn = document.getElementById('next-btn');
+const autoplayToggle = document.getElementById('autoplay-toggle');
+const playedToggleHeader = document.getElementById('played-toggle-header');
+const playedListContainer = document.getElementById('played-list-container');
+const playedArrow = document.getElementById('played-arrow');
+const playedCount = document.getElementById('played-count');
 
 let queue = [];
 let playedQueue = [];
 let currentPlayingId = null;
 let activeStorage = browser.storage.local;
+let isPlayedSectionOpen = false;
+let isPlaying = false;
 
 async function getStorageEngine() {
   const settings = await browser.storage.local.get(['storageMode', 'afterPlay']);
@@ -23,14 +31,27 @@ async function getStorageEngine() {
 
 async function loadQueue() {
   activeStorage = await getStorageEngine();
-  const data = await activeStorage.get(['queue', 'playedQueue', 'currentPlayingId']);
+  const data = await activeStorage.get(['queue', 'playedQueue', 'currentPlayingId', 'isPlaying', 'autoplay']);
+  
   queue = data.queue || [];
   playedQueue = data.playedQueue || [];
   currentPlayingId = data.currentPlayingId || null;
+  autoplayToggle.checked = data.autoplay !== false;
+  
+  updatePlayButtonUI(!!data.isPlaying);
   renderQueue();
 }
 
-browser.storage.onChanged.addListener(() => loadQueue());
+autoplayToggle.addEventListener('change', async (e) => {
+  await activeStorage.set({ autoplay: e.target.checked });
+});
+
+browser.storage.onChanged.addListener((changes) => {
+  if (changes.isPlaying) {
+    updatePlayButtonUI(!!changes.isPlaying.newValue);
+  }
+  loadQueue();
+});
 
 storageModeSelect.addEventListener('change', async (e) => {
   const newMode = e.target.value;
@@ -44,14 +65,6 @@ afterPlaySelect.addEventListener('change', async (e) => {
   await browser.storage.local.set({ afterPlay: e.target.value });
 });
 
-// 1. Play Queue
-playBtn.addEventListener('click', () => {
-  if (queue.length > 0) {
-    playVideo(queue[0]);
-  }
-});
-
-// 2. Clear Queue with Confirmation
 clearBtn.addEventListener('click', async () => {
   if (queue.length === 0 && playedQueue.length === 0) return;
   
@@ -69,7 +82,6 @@ function renderQueue() {
   while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
   while (playedListEl.firstChild) playedListEl.removeChild(playedListEl.firstChild);
 
-  // 5. Update Queue Counter (e.g., 2/5)
   const total = queue.length + playedQueue.length;
   let activeIndex = queue.findIndex(item => item.id === currentPlayingId);
   
@@ -82,15 +94,16 @@ function renderQueue() {
     counterBadge.textContent = total > 0 ? `0/${total}` : `0/0`;
   }
 
-  // Render "Up Next" Queue
+  // Render Queue
   queue.forEach((item, index) => {
     const li = createVideoItem(item, index, false);
     listEl.appendChild(li);
   });
 
-  // 3. Render "Played" Section if items exist
   if (afterPlaySelect.value === 'keep' && playedQueue.length > 0) {
     playedSection.style.display = 'block';
+    playedCount.textContent = playedQueue.length;
+
     playedQueue.forEach((item, index) => {
       const li = createVideoItem(item, index, true);
       playedListEl.appendChild(li);
@@ -98,14 +111,16 @@ function renderQueue() {
   } else {
     playedSection.style.display = 'none';
   }
+
+  updateFoldUI();
 }
 
 function createVideoItem(item, index, isPlayed) {
   const li = document.createElement('li');
-  li.draggable = !isPlayed;
+  li.draggable = true; // Allow dragging for both active and played items
   li.dataset.index = index;
+  li.dataset.isPlayed = isPlayed ? 'true' : 'false'; // Store origin section
 
-  // 4. Highlight currently playing video
   if (item.id === currentPlayingId) {
     li.classList.add('playing');
   }
@@ -116,7 +131,7 @@ function createVideoItem(item, index, isPlayed) {
   const img = document.createElement('img');
   img.className = 'thumb-img';
   img.src = item.thumbnail || `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
-  img.addEventListener('click', () => playVideo(item));
+  img.addEventListener('click', () => playVideo(item, isPlayed));
 
   const infoDiv = document.createElement('div');
   infoDiv.className = 'info-container';
@@ -125,7 +140,7 @@ function createVideoItem(item, index, isPlayed) {
   titleSpan.className = 'title';
   titleSpan.title = item.title || 'YouTube Video';
   titleSpan.textContent = item.title || 'YouTube Video';
-  titleSpan.addEventListener('click', () => playVideo(item));
+  titleSpan.addEventListener('click', () => playVideo(item, isPlayed));
 
   infoDiv.appendChild(titleSpan);
 
@@ -146,43 +161,195 @@ function createVideoItem(item, index, isPlayed) {
   li.appendChild(infoDiv);
   li.appendChild(removeBtn);
 
+  // Drag and Drop Logic
+  li.addEventListener('dragstart', (e) => {
+    // Pass both the index and whether the item is from the played section
+    e.dataTransfer.setData('text/plain', JSON.stringify({ index, isPlayed }));
+  });
+
+  // Only allow dropping onto active "Up Next" items
   if (!isPlayed) {
-    li.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', index));
     li.addEventListener('dragover', (e) => e.preventDefault());
     li.addEventListener('drop', async (e) => {
       e.preventDefault();
-      const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
-      if (isNaN(fromIdx)) return;
+      try {
+        const dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
+        const fromIdx = dragData.index;
+        const fromPlayed = dragData.isPlayed;
 
-      const [moved] = queue.splice(fromIdx, 1);
-      queue.splice(index, 0, moved);
-      await activeStorage.set({ queue });
-      renderQueue();
+        if (isNaN(fromIdx)) return;
+
+        if (fromPlayed) {
+          // Move item out of Played Queue and insert into Up Next queue at drop target
+          const [movedItem] = playedQueue.splice(fromIdx, 1);
+          queue.splice(index, 0, movedItem);
+        } else {
+          // Re-order within Up Next queue
+          const [movedItem] = queue.splice(fromIdx, 1);
+          queue.splice(index, 0, movedItem);
+        }
+
+        await activeStorage.set({ queue, playedQueue });
+        renderQueue();
+      } catch (err) {
+        console.error("Drop handling error:", err);
+      }
     });
   }
 
   return li;
 }
 
-async function playVideo(item) {
-  currentPlayingId = item.id;
-
+async function playVideo(item, isPlayed = false) {
   const afterPlayMode = (await browser.storage.local.get('afterPlay')).afterPlay || 'remove';
 
-  if (afterPlayMode === 'keep') {
-    // 3. Move video to Played section
+  if (isPlayed) {
+    // 1. If re-watching a played video, move it out of Played section...
+    playedQueue = playedQueue.filter(i => i.id !== item.id);
+    
+    // ...and archive whatever was currently playing
+    if (currentPlayingId) {
+      const activeIdx = queue.findIndex(i => i.id === currentPlayingId);
+      if (activeIdx !== -1) {
+        const [prevPlaying] = queue.splice(activeIdx, 1);
+        if (afterPlayMode === 'keep') playedQueue.push(prevPlaying);
+      }
+    }
+
+    // Put re-watched video at top of Up Next queue
+    queue = queue.filter(i => i.id !== item.id);
+    queue.unshift(item);
+  } else {
+    // 2. If picking a new video from Up Next while something else is playing...
+    if (currentPlayingId && currentPlayingId !== item.id) {
+      const activeIdx = queue.findIndex(i => i.id === currentPlayingId);
+      if (activeIdx !== -1) {
+        const [prevPlaying] = queue.splice(activeIdx, 1);
+        if (afterPlayMode === 'keep') {
+          playedQueue.push(prevPlaying); // Move old active video to Played section
+        }
+      }
+    }
+
+    // Move new selection to top of queue (index 0) so it stays highlighted
     const qIndex = queue.findIndex(i => i.id === item.id);
     if (qIndex !== -1) {
-      const [played] = queue.splice(qIndex, 1);
-      playedQueue.push(played);
+      const [selected] = queue.splice(qIndex, 1);
+      queue.unshift(selected);
     }
-  } else {
-    // Pop video out of queue
-    queue = queue.filter(i => i.id !== item.id);
   }
 
+  currentPlayingId = item.id;
+
   await activeStorage.set({ queue, playedQueue, currentPlayingId });
-  browser.tabs.create({ url: item.url });
+  renderQueue();
+
+  // Send request to launch/update player tab
+  // Add an optional focus parameter to control active tab switching
+  browser.runtime.sendMessage({ type: 'PLAY_VIDEO', url: item.url, focus: false });
+}
+
+playPauseBtn.addEventListener('click', async () => {
+  const data = await activeStorage.get(['queue', 'currentPlayingId', 'isPlaying']);
+  const currentQueue = data.queue || [];
+
+  if (!data.currentPlayingId && currentQueue.length > 0) {
+    playVideo(currentQueue[0]);
+    return;
+  }
+
+  browser.runtime.sendMessage({ type: 'CONTROL_PLAYER', command: 'TOGGLE' });
+});
+
+// Skip to Next Video action
+nextBtn.addEventListener('click', async () => {
+  const activeStorage = await getStorageEngine();
+  const data = await activeStorage.get(['queue', 'playedQueue', 'currentPlayingId']);
+  let q = data.queue || [];
+  let pq = data.playedQueue || [];
+  const afterPlayMode = (await browser.storage.local.get('afterPlay')).afterPlay || 'remove';
+
+  if (q.length === 0) return;
+
+  // Move currently active video to Played section
+  const activeIdx = q.findIndex(item => item.id === currentPlayingId);
+  if (activeIdx !== -1) {
+    const [finished] = q.splice(activeIdx, 1);
+    if (afterPlayMode === 'keep') {
+      pq.push(finished);
+    }
+  }
+
+  // Play next video in queue
+  if (q.length > 0) {
+    queue = q;
+    playedQueue = pq;
+    await activeStorage.set({ queue, playedQueue });
+    playVideo(queue[0]);
+  } else {
+    queue = [];
+    playedQueue = pq;
+    currentPlayingId = null;
+    await activeStorage.set({ queue, playedQueue, currentPlayingId, isPlaying: false });
+    renderQueue();
+  }
+});
+
+async function loadFoldState() {
+  const settings = await browser.storage.local.get('isPlayedSectionOpen');
+  isPlayedSectionOpen = settings.isPlayedSectionOpen || false;
+  updateFoldUI();
+}
+
+playedToggleHeader.addEventListener('click', async () => {
+  isPlayedSectionOpen = !isPlayedSectionOpen;
+  await browser.storage.local.set({ isPlayedSectionOpen });
+  updateFoldUI();
+});
+
+function updateFoldUI() {
+  if (isPlayedSectionOpen) {
+    playedListContainer.classList.remove('collapsed');
+    playedArrow.textContent = '▾';
+  } else {
+    playedListContainer.classList.add('collapsed');
+    playedArrow.textContent = '▸';
+  }
+}
+
+function updatePlayButtonUI(playing) {
+  isPlaying = playing;
+  if (isPlaying) {
+    playPauseBtn.textContent = '❚❚ Pause';
+    playPauseBtn.classList.add('playing-state');
+  } else {
+    playPauseBtn.textContent = '▶ Play';
+    playPauseBtn.classList.remove('playing-state');
+  }
 }
 
 loadQueue();
+loadFoldState();
+
+// Allow dropping items into the general Up Next list area
+listEl.addEventListener('dragover', (e) => e.preventDefault());
+listEl.addEventListener('drop', async (e) => {
+  // Only handle if dropped in empty space of list
+  if (e.target === listEl) {
+    e.preventDefault();
+    try {
+      const dragData = JSON.parse(e.dataTransfer.getData('text/plain'));
+      const fromIdx = dragData.index;
+      const fromPlayed = dragData.isPlayed;
+
+      if (fromPlayed && !isNaN(fromIdx)) {
+        const [movedItem] = playedQueue.splice(fromIdx, 1);
+        queue.push(movedItem); // Append to the end of Up Next
+        await activeStorage.set({ queue, playedQueue });
+        renderQueue();
+      }
+    } catch (err) {
+      console.error("List area drop error:", err);
+    }
+  }
+});

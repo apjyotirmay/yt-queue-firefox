@@ -124,3 +124,45 @@ setInterval(async () => {
     }
   }
 }, 2000);
+
+function attachVideoListeners() {
+  const video = document.querySelector('video');
+  if (!video || video.dataset.queueTracked) return;
+
+  video.dataset.queueTracked = 'true';
+
+  // Report play state
+  video.addEventListener('play', () => {
+    browser.runtime.sendMessage({ type: 'PLAYER_STATUS', isPlaying: true });
+  });
+
+  // Report pause state
+  video.addEventListener('pause', () => {
+    browser.runtime.sendMessage({ type: 'PLAYER_STATUS', isPlaying: false });
+  });
+
+  // Track video end to auto-advance
+  video.addEventListener('ended', async () => {
+    browser.runtime.sendMessage({ type: 'PLAYER_STATUS', isPlaying: false });
+    browser.runtime.sendMessage({ type: 'VIDEO_ENDED' });
+  });
+}
+
+// Observe YouTube SPA navigation changes
+const observer = new MutationObserver(() => attachVideoListeners());
+observer.observe(document.body, { childList: true, subtree: true });
+attachVideoListeners();
+
+// Receive toggle commands directly
+browser.runtime.onMessage.addListener((msg) => {
+  const video = document.querySelector('video');
+  if (!video) return;
+
+  if (msg.command === 'TOGGLE') {
+    if (video.paused) {
+      video.play().catch(console.error);
+    } else {
+      video.pause();
+    }
+  }
+});

@@ -69,6 +69,7 @@
     }
     .btn-row {
       display: flex;
+      flex-wrap: wrap;
       gap: 6px;
     }
     button {
@@ -89,6 +90,13 @@
       align-items: center;
       font-size: 12px;
       color: #ccc;
+    }
+    #play-pause-btn,
+    #next-btn {
+      flex: 1; 
+    }
+    #clear-btn {
+      flex: 1 1 100%; 
     }
     select {
       background: #2b2b2b;
@@ -154,6 +162,23 @@
       margin-top: 10px;
       font-size: 11px;
     }
+    .foldable-header {
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+      transition: color 0.15s ease;
+    }
+
+    .foldable-header:hover {
+      color: #ffffff;
+    }
+
+    #played-list-container.collapsed {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -168,8 +193,14 @@
 
   <div class="controls-grid">
     <div class="btn-row">
-      <button id="play-btn" class="btn-play">▶ Play Queue</button>
+      <button id="play-pause-btn" class="btn-play">▶ Play</button>
+      <button id="next-btn" class="btn-next">⏭ Skip</button>
       <button id="clear-btn" class="btn-clear">Clear</button>
+    </div>
+
+    <div class="setting-row">
+      <label for="autoplay-toggle">Autoplay next video:</label>
+      <input type="checkbox" id="autoplay-toggle" checked>
     </div>
 
     <div class="setting-row">
@@ -191,14 +222,21 @@
 
   <div id="drop-zone">Drop YouTube Links Here</div>
 
+  <div id="played-section" style="display: none;">
+    <!-- Clickable Foldable Header -->
+    <div class="section-title foldable-header" id="played-toggle-header">
+      <span id="played-arrow">▸</span> Played Videos (<span id="played-count">0</span>)
+    </div>
+    
+    <!-- Collapsible List Wrapper -->
+    <div id="played-list-container" class="collapsed">
+      <ul id="played-list"></ul>
+    </div>
+  </div>
+
   <div id="active-section">
     <div class="section-title">Up Next</div>
     <ul id="queue-list"></ul>
-  </div>
-
-  <div id="played-section" style="display: none;">
-    <div class="section-title">Played Videos</div>
-    <ul id="played-list"></ul>
   </div>
 
   <script src="sidebar.js"></script>
