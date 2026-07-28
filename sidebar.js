@@ -236,42 +236,49 @@ function createVideoItem(item, index, isPlayed) {
 }
 
 async function playVideo(item, isPlayed = false) {
-  const afterPlayMode =
-    (await browser.storage.local.get("afterPlay")).afterPlay || "remove";
-
   if (isPlayed) {
+    // 1. Remove selected item from playedQueue
     playedQueue = playedQueue.filter((i) => i.id !== item.id);
 
+    // 2. Extract current playing video from queue (if present)
+    let currentlyPlayingItem = null;
     if (currentPlayingId) {
       const activeIdx = queue.findIndex((i) => i.id === currentPlayingId);
       if (activeIdx !== -1) {
-        const [prevPlaying] = queue.splice(activeIdx, 1);
-        if (afterPlayMode === "keep") playedQueue.push(prevPlaying);
+        [currentlyPlayingItem] = queue.splice(activeIdx, 1);
       }
     }
 
+    // Deduplicate in queue
     queue = queue.filter((i) => i.id !== item.id);
+
+    // 3. Put restored played video at Index 0 (Now Playing)
     queue.unshift(item);
+
+    // 4. Put previous active video right next to it at Index 1 (Up Next)
+    if (currentlyPlayingItem && currentlyPlayingItem.id !== item.id) {
+      queue.splice(1, 0, currentlyPlayingItem);
+    }
   } else {
+    // Clicking an item inside the main queue
     if (currentPlayingId && currentPlayingId !== item.id) {
       const activeIdx = queue.findIndex((i) => i.id === currentPlayingId);
-      if (activeIdx !== -1) {
-        const [prevPlaying] = queue.splice(activeIdx, 1);
-        if (afterPlayMode === "keep") {
-          playedQueue.push(prevPlaying);
-        }
-      }
-    }
+      const clickedIdx = queue.findIndex((i) => i.id === item.id);
 
-    const qIndex = queue.findIndex((i) => i.id === item.id);
-    if (qIndex !== -1) {
-      const [selected] = queue.splice(qIndex, 1);
-      queue.unshift(selected);
+      if (activeIdx !== -1 && clickedIdx !== -1) {
+        // Move clicked item to index 0 (Now Playing)
+        const [selected] = queue.splice(clickedIdx, 1);
+        queue.unshift(selected);
+
+        // Note: The previous active video naturally shifts down in the array!
+      }
     }
   }
 
+  // Set active ID
   currentPlayingId = item.id;
 
+  // Persist and update UI
   await activeStorage.set({ queue, playedQueue, currentPlayingId });
   renderQueue();
 
