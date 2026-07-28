@@ -36,6 +36,15 @@ function extractVideoId(urlStr) {
   return null;
 }
 
+// Helper to clear blue insertion indicator lines across the list
+function clearDragIndicators() {
+  document
+    .querySelectorAll(".drag-over-above, .drag-over-below")
+    .forEach((el) => {
+      el.classList.remove("drag-over-above", "drag-over-below");
+    });
+}
+
 async function getStorageEngine() {
   const settings = await browser.storage.local.get([
     "storageMode",
@@ -216,17 +225,51 @@ function createVideoItem(item, index, isPlayed) {
   li.appendChild(infoDiv);
   li.appendChild(removeBtn);
 
+  // Drag Start: Dim item and attach drag payload
   li.addEventListener("dragstart", (e) => {
+    li.classList.add("dragging");
     const payload = JSON.stringify({ index, isPlayed });
     e.dataTransfer.setData("application/json", payload);
     e.dataTransfer.setData("text/plain", payload);
   });
 
+  // Drag End: Cleanup drag state
+  li.addEventListener("dragend", () => {
+    li.classList.remove("dragging");
+    clearDragIndicators();
+  });
+
   if (!isPlayed) {
-    li.addEventListener("dragover", (e) => e.preventDefault());
+    // Drag Over: Provide real-time insertion indicator
+    li.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      const rect = li.getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+
+      clearDragIndicators();
+
+      if (e.clientY < midpoint) {
+        li.classList.add("drag-over-above");
+      } else {
+        li.classList.add("drag-over-below");
+      }
+    });
+
+    li.addEventListener("dragleave", () => {
+      li.classList.remove("drag-over-above", "drag-over-below");
+    });
+
+    // Drop Handler: Insert exactly where indicated by hover position
     li.addEventListener("drop", async (e) => {
       e.preventDefault();
       e.stopPropagation();
+
+      const rect = li.getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+      const isAbove = e.clientY < midpoint;
+
+      clearDragIndicators();
+
       try {
         const rawData =
           e.dataTransfer.getData("application/json") ||
@@ -239,12 +282,16 @@ function createVideoItem(item, index, isPlayed) {
 
         if (isNaN(fromIdx)) return;
 
+        let targetIdx = isAbove ? index : index + 1;
+
         if (fromPlayed) {
           const [movedItem] = playedQueue.splice(fromIdx, 1);
-          queue.splice(index, 0, movedItem);
+          queue.splice(targetIdx, 0, movedItem);
         } else {
+          // Adjust target offset if moving an item further down in the same list
+          if (fromIdx < targetIdx) targetIdx--;
           const [movedItem] = queue.splice(fromIdx, 1);
-          queue.splice(index, 0, movedItem);
+          queue.splice(targetIdx, 0, movedItem);
         }
 
         await activeStorage.set({ queue, playedQueue });
