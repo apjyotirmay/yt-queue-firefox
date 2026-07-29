@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.5.0] - 2026-07-29
+
+### Added
+- Light/Dark mode support[cite: 3].
+- Pin to toolbar support and keyboard summon shortcut[cite: 3].
+
+### Improved
+- General UI enhancements[cite: 3].
+- Player controls are now pinned to be always visible[cite: 3].
+
 ## [3.4.0] - 2026-07-29
 
 ### Added
