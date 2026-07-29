@@ -17,7 +17,8 @@
   "permissions": [
     "storage",
     "contextMenus",
-    "tabs"
+    "tabs",
+    "activeTab"
   ],
   "host_permissions": [
     "*://*.youtube.com/*"
@@ -31,6 +32,10 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "action": {
+    "default_icon": "icons/icon-48.png",
+    "default_title": "YouTube Queue Sidebar"
+  },
   "sidebar_action": {
     "default_title": "YouTube Queue",
     "default_panel": "sidebar.html",
@@ -42,6 +47,13 @@
         "default": "Alt+Q"
       },
       "description": "Add hovered video or active tab to queue"
+    },
+    "_execute_sidebar_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Toggle YouTube Queue Sidebar"
     }
   },
   "content_scripts": [
