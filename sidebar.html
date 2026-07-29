@@ -82,8 +82,6 @@
         cursor: pointer;
       }
       button:disabled {
-        /* background-color: #cccccc; */
-        /* color: #666666; */
         cursor: not-allowed;
         opacity: 0.4;
       }
@@ -107,6 +105,29 @@
         align-items: center;
         font-size: 12px;
         color: #ccc;
+        margin-bottom: 2px;
+      }
+      .setting-row label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 13px;
+        user-select: none;
+      }
+      .setting-row input[type="checkbox"] {
+        cursor: pointer;
+        width: 15px;
+        height: 15px;
+        margin: 0;
+      }
+      .sync-status-row {
+        font-size: 11px;
+        color: #888;
+        margin-left: 23px;
+        margin-top: -2px;
+        margin-bottom: 4px;
+        display: none;
       }
       #play-pause-btn,
       #next-btn {
@@ -205,25 +226,6 @@
       #played-list-container.collapsed {
         display: none;
       }
-      .setting-row {
-        display: flex;
-        align-items: center;
-        margin-bottom: 2px;
-      }
-      .setting-row label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        cursor: pointer;
-        font-size: 13px;
-        user-select: none;
-      }
-      .setting-row input[type="checkbox"] {
-        cursor: pointer;
-        width: 15px;
-        height: 15px;
-        margin: 0;
-      }
       /* Drag & Drop Feedback Styles */
       li.drag-over-above {
         border-top: 3px solid #3ea6ff !important;
@@ -273,6 +275,9 @@
           <input type="checkbox" id="cloud-sync-toggle" />
           <span>Enable Cloud Sync</span>
         </label>
+      </div>
+      <div id="sync-status-row" class="sync-status-row">
+        Synced: <span id="sync-status-text">never</span>
       </div>
     </div>
 

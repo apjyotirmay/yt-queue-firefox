@@ -5,6 +5,8 @@ const dropZone = document.getElementById("drop-zone");
 const clearBtn = document.getElementById("clear-btn");
 const keepPlayedToggle = document.getElementById("keep-played-toggle");
 const cloudSyncToggle = document.getElementById("cloud-sync-toggle");
+const syncStatusRow = document.getElementById("sync-status-row");
+const syncStatusText = document.getElementById("sync-status-text");
 const counterBadge = document.getElementById("queue-counter");
 const playPauseBtn = document.getElementById("play-pause-btn");
 const nextBtn = document.getElementById("next-btn");
@@ -21,8 +23,13 @@ let activeStorage = browser.storage.local;
 let isPlayedSectionOpen = false;
 let isPlaying = false;
 
-// Flags and locks to prevent race conditions & double additions
+// Sync Timestamp & Status State
+let lastSyncedAt = null;
+
+// Flags & Buffers for Concurrency & Sync Lock
 let isSelfSaving = false;
+let isSyncing = false;
+let writeBuffer = [];
 const pendingAdds = new Set();
 
 function extractVideoId(urlStr) {
@@ -111,13 +118,124 @@ function highlightVideoItem(videoId) {
   });
 }
 
-// Save queue helper with self-save flag protection
+// Format relative time (e.g., "just now", "2m ago", "1h ago")
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return "never";
+  const diffSec = Math.floor((Date.now() - timestamp) / 1000);
+
+  if (diffSec < 10) return "just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
+// Update Sync Status UI display
+function updateSyncStatusUI() {
+  if (!cloudSyncToggle.checked) {
+    syncStatusRow.style.display = "none";
+    return;
+  }
+
+  syncStatusRow.style.display = "block";
+  syncStatusText.textContent = formatRelativeTime(lastSyncedAt);
+}
+
+// Save queue helper with self-save flag protection and write buffer handling
 async function saveState() {
+  if (isSyncing) {
+    // Snapshot current mutation into write buffer during active sync
+    writeBuffer.push({
+      queue: JSON.parse(JSON.stringify(queue)),
+      playedQueue: JSON.parse(JSON.stringify(playedQueue)),
+      currentPlayingId,
+    });
+    return;
+  }
+
   isSelfSaving = true;
   await activeStorage.set({ queue, playedQueue, currentPlayingId });
   setTimeout(() => {
     isSelfSaving = false;
   }, 200);
+}
+
+// Robust Cloud Synchronization Workflow
+async function performCloudSync() {
+  const settings = await browser.storage.local.get("storageMode");
+  if (settings.storageMode !== "sync" || isSyncing) return;
+
+  isSyncing = true;
+
+  try {
+    // 1. FETCH-FIRST GUARD: Always pull Cloud state before writing
+    const cloudData = await browser.storage.sync.get([
+      "queue",
+      "playedQueue",
+      "currentPlayingId",
+    ]);
+
+    const remoteQueue = cloudData.queue || [];
+    const remotePlayed = cloudData.playedQueue || [];
+
+    // 2. MERGE & DEDUPLICATE ACTIVE QUEUE
+    const localQueueIds = new Set(queue.map((item) => item.id));
+    const newRemoteQueue = remoteQueue.filter(
+      (item) => !localQueueIds.has(item.id),
+    );
+
+    // Local items remain at the head (FIFO priority), Cloud appended to the end
+    queue = [...queue, ...newRemoteQueue];
+
+    // 3. MERGE & DEDUPLICATE PLAYED QUEUE
+    const localPlayedIds = new Set(playedQueue.map((item) => item.id));
+    const newRemotePlayed = remotePlayed.filter(
+      (item) => !localPlayedIds.has(item.id),
+    );
+    playedQueue = [...playedQueue, ...newRemotePlayed];
+
+    // Preserve playing state if local doesn't have one
+    if (!currentPlayingId && cloudData.currentPlayingId) {
+      currentPlayingId = cloudData.currentPlayingId;
+    }
+
+    // 4. DRAIN CONCURRENT WRITE BUFFER
+    if (writeBuffer.length > 0) {
+      const latestState = writeBuffer[writeBuffer.length - 1];
+      queue = latestState.queue;
+      playedQueue = latestState.playedQueue;
+      currentPlayingId = latestState.currentPlayingId;
+      writeBuffer = [];
+    }
+
+    // 5. UPDATE LOCAL, TIMESTAMP & PUSH UNIFIED STATE TO CLOUD
+    lastSyncedAt = Date.now();
+    await browser.storage.local.set({
+      queue,
+      playedQueue,
+      currentPlayingId,
+      lastSyncedAt,
+    });
+
+    isSelfSaving = true;
+    await browser.storage.sync.set({ queue, playedQueue, currentPlayingId });
+    setTimeout(() => {
+      isSelfSaving = false;
+    }, 200);
+
+    renderQueue();
+    updateSyncStatusUI();
+  } catch (err) {
+    console.error("Cloud Queue Sync failed:", err);
+  } finally {
+    isSyncing = false;
+  }
 }
 
 // Synchronous check & async process to handle queue additions reliably
@@ -195,6 +313,12 @@ async function addVideoToQueue(newVideo, targetIndex = null) {
   await saveState();
   renderQueue();
   highlightVideoItem(videoId);
+
+  // Trigger sync push if cloud sync is active
+  const settings = await browser.storage.local.get("storageMode");
+  if (settings.storageMode === "sync") {
+    await performCloudSync();
+  }
 }
 
 async function getStorageEngine() {
@@ -214,23 +338,53 @@ async function getStorageEngine() {
 
 async function loadQueue() {
   activeStorage = await getStorageEngine();
-  const data = await activeStorage.get([
-    "queue",
-    "playedQueue",
-    "currentPlayingId",
-    "isPlaying",
-    "autoplay",
+  const settings = await browser.storage.local.get([
+    "storageMode",
+    "lastSyncedAt",
   ]);
+  lastSyncedAt = settings.lastSyncedAt || null;
 
-  queue = data.queue || [];
-  playedQueue = data.playedQueue || [];
-  currentPlayingId = data.currentPlayingId || null;
-  autoplayToggle.checked = data.autoplay !== false;
+  if (settings.storageMode === "sync") {
+    // First load existing local data to populate UI instantly
+    const localData = await browser.storage.local.get([
+      "queue",
+      "playedQueue",
+      "currentPlayingId",
+      "isPlaying",
+      "autoplay",
+    ]);
+    queue = localData.queue || [];
+    playedQueue = localData.playedQueue || [];
+    currentPlayingId = localData.currentPlayingId || null;
+    autoplayToggle.checked = localData.autoplay !== false;
+    isPlaying = !!localData.isPlaying;
 
-  isPlaying = !!data.isPlaying;
-  updatePlayButtonUI(isPlaying);
+    updatePlayButtonUI(isPlaying);
+    renderQueue();
+    updateSyncStatusUI();
 
-  renderQueue();
+    // Perform Fetch-First Sync with Cloud
+    await performCloudSync();
+  } else {
+    const data = await activeStorage.get([
+      "queue",
+      "playedQueue",
+      "currentPlayingId",
+      "isPlaying",
+      "autoplay",
+    ]);
+
+    queue = data.queue || [];
+    playedQueue = data.playedQueue || [];
+    currentPlayingId = data.currentPlayingId || null;
+    autoplayToggle.checked = data.autoplay !== false;
+
+    isPlaying = !!data.isPlaying;
+    updatePlayButtonUI(isPlaying);
+
+    renderQueue();
+    updateSyncStatusUI();
+  }
 }
 
 autoplayToggle.addEventListener("change", async (e) => {
@@ -241,10 +395,12 @@ cloudSyncToggle.addEventListener("change", async (e) => {
   const newMode = e.target.checked ? "sync" : "local";
   await browser.storage.local.set({ storageMode: newMode });
 
-  const targetStorage =
-    newMode === "sync" ? browser.storage.sync : browser.storage.local;
-  await targetStorage.set({ queue, playedQueue, currentPlayingId });
-  loadQueue();
+  if (newMode === "sync") {
+    await performCloudSync();
+  } else {
+    updateSyncStatusUI();
+    loadQueue();
+  }
 });
 
 keepPlayedToggle.addEventListener("change", async (e) => {
@@ -291,6 +447,14 @@ clearBtn.addEventListener("click", async () => {
     currentPlayingId = null;
     await saveState();
     renderQueue();
+
+    const settings = await browser.storage.local.get("storageMode");
+    if (settings.storageMode === "sync") {
+      await browser.storage.sync.set({ queue, playedQueue, currentPlayingId });
+      lastSyncedAt = Date.now();
+      await browser.storage.local.set({ lastSyncedAt });
+      updateSyncStatusUI();
+    }
   }
 });
 
@@ -379,6 +543,11 @@ function createVideoItem(item, index, isPlayed) {
     }
     await saveState();
     renderQueue();
+
+    const settings = await browser.storage.local.get("storageMode");
+    if (settings.storageMode === "sync") {
+      await performCloudSync();
+    }
   });
 
   li.appendChild(img);
@@ -458,6 +627,11 @@ function createVideoItem(item, index, isPlayed) {
 
           await saveState();
           renderQueue();
+
+          const settings = await browser.storage.local.get("storageMode");
+          if (settings.storageMode === "sync") {
+            await performCloudSync();
+          }
         } else {
           // Dropped external link directly onto item
           const videoId = extractVideoId(rawData);
@@ -514,6 +688,11 @@ async function playVideo(item, isPlayed = false) {
   currentPlayingId = item.id;
   await saveState();
   renderQueue();
+
+  const settings = await browser.storage.local.get("storageMode");
+  if (settings.storageMode === "sync") {
+    await performCloudSync();
+  }
 
   browser.runtime.sendMessage({
     type: "PLAY_VIDEO",
@@ -581,6 +760,11 @@ nextBtn.addEventListener("click", async () => {
     }, 200);
     renderQueue();
   }
+
+  const settings = await browser.storage.local.get("storageMode");
+  if (settings.storageMode === "sync") {
+    await performCloudSync();
+  }
 });
 
 async function loadFoldState() {
@@ -615,6 +799,9 @@ function updatePlayButtonUI(playing) {
     playPauseBtn.classList.remove("playing-state");
   }
 }
+
+// Automatically update relative timestamp every 10 seconds
+setInterval(updateSyncStatusUI, 10000);
 
 loadQueue();
 loadFoldState();

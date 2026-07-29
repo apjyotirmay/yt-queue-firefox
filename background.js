@@ -35,6 +35,53 @@ async function fetchVideoTitle(videoId) {
   return `Video (${videoId})`;
 }
 
+// Safely appends video item enforcing Fetch-First Guard & Deduplication
+async function safeAddToQueue(videoToAdd) {
+  const settings = await browser.storage.local.get("storageMode");
+  const isSync = settings.storageMode === "sync";
+
+  let currentQueue = [];
+  let currentPlayed = [];
+
+  if (isSync) {
+    // 1. FETCH-FIRST GUARD: Fetch existing Cloud data first
+    const cloudData = await browser.storage.sync.get(["queue", "playedQueue"]);
+    const localData = await browser.storage.local.get(["queue", "playedQueue"]);
+
+    const remoteQueue = cloudData.queue || [];
+    const localQueue = localData.queue || [];
+
+    // Deduplicate Cloud data against local queue items
+    const localIds = new Set(localQueue.map((item) => item.id));
+    const newRemoteQueue = remoteQueue.filter((item) => !localIds.has(item.id));
+
+    // Append unique remote items to local queue (FIFO preservation)
+    currentQueue = [...localQueue, ...newRemoteQueue];
+    currentPlayed = localData.playedQueue || [];
+  } else {
+    const localData = await browser.storage.local.get("queue");
+    currentQueue = localData.queue || [];
+  }
+
+  // 2. DEDUPLICATE NEW ITEM
+  const existingIndex = currentQueue.findIndex((i) => i.id === videoToAdd.id);
+  if (existingIndex !== -1) {
+    currentQueue[existingIndex] = {
+      ...currentQueue[existingIndex],
+      ...videoToAdd,
+    };
+  } else {
+    currentQueue.push(videoToAdd);
+  }
+
+  // 3. PERSIST STATE ACCORDINGLY
+  await browser.storage.local.set({ queue: currentQueue });
+
+  if (isSync) {
+    await browser.storage.sync.set({ queue: currentQueue });
+  }
+}
+
 // Track tab closure to reset playerTabId cleanly in storage
 browser.tabs.onRemoved.addListener(async (tabId) => {
   const { playerTabId } = await browser.storage.local.get("playerTabId");
@@ -56,18 +103,15 @@ browser.contextMenus.onClicked.addListener(async (info) => {
     const videoId = extractVideoId(info.linkUrl);
     if (!videoId) return;
 
-    const storage = await getStorageEngine();
     const title = await fetchVideoTitle(videoId);
-    const { queue = [] } = await storage.get("queue");
-
-    queue.push({
+    const videoToAdd = {
       id: videoId,
       title,
       url: `https://www.youtube.com/watch?v=${videoId}`,
       thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    });
+    };
 
-    await storage.set({ queue });
+    await safeAddToQueue(videoToAdd);
   }
 });
 
@@ -221,18 +265,17 @@ browser.runtime.onMessage.addListener(async (message) => {
   }
 
   if (message.type === "ADD_TO_QUEUE") {
-    const storage = await getStorageEngine();
     let title = message.video.title;
     if (!title || title.startsWith("Video (")) {
       title = await fetchVideoTitle(message.video.id);
     }
-    const { queue = [] } = await storage.get("queue");
-    queue.push({
+    const videoToAdd = {
       id: message.video.id,
       title,
       url: message.video.url,
       thumbnail: `https://i.ytimg.com/vi/${message.video.id}/hqdefault.jpg`,
-    });
-    await storage.set({ queue });
+    };
+
+    await safeAddToQueue(videoToAdd);
   }
 });
