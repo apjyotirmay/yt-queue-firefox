@@ -1,7 +1,6 @@
 const listEl = document.getElementById("queue-list");
 const playedListEl = document.getElementById("played-list");
 const playedSection = document.getElementById("played-section");
-const dropZone = document.getElementById("drop-zone");
 const clearBtn = document.getElementById("clear-btn");
 const keepPlayedToggle = document.getElementById("keep-played-toggle");
 const cloudSyncToggle = document.getElementById("cloud-sync-toggle");

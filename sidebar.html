@@ -3,17 +3,84 @@
   <head>
     <meta charset="utf-8" />
     <style>
+      :root {
+        /* Dark Theme Variables (Default) */
+        --bg-color: #1f1f1f;
+        --text-color: #ffffff;
+        --text-muted: #888888;
+        --text-subtle: #aaaaaa;
+        --text-setting: #cccccc;
+        --card-bg: #2b2b2b;
+        --card-hover: #383838;
+        --border-color: #444444;
+        --info-bg: #383838;
+        --info-text: #aaaaaa;
+        --badge-bg: #333333;
+        --tooltip-bg: #333333;
+        --btn-clear-bg: #383838;
+        --btn-clear-text: #ff5555;
+        --btn-clear-hover: #484848;
+        --playing-bg: #362020;
+        --playing-border: #ff0000;
+        --drag-indicator: #3ea6ff;
+      }
+
+      @media (prefers-color-scheme: light) {
+        :root {
+          /* Light Theme Variables */
+          --bg-color: #ffffff;
+          --text-color: #0f0f0f;
+          --text-muted: #606060;
+          --text-subtle: #606060;
+          --text-setting: #0f0f0f;
+          --card-bg: #f2f2f2;
+          --card-hover: #e5e5e5;
+          --border-color: #cccccc;
+          --info-bg: #e5e5e5;
+          --info-text: #606060;
+          --badge-bg: #e5e5e5;
+          --tooltip-bg: #0f0f0f;
+          --btn-clear-bg: #f2f2f2;
+          --btn-clear-text: #cc0000;
+          --btn-clear-hover: #e5e5e5;
+          --playing-bg: #ffe6e6;
+          --playing-border: #cc0000;
+          --drag-indicator: #065fd4;
+        }
+      }
+
+      html {
+        /* For Firefox */
+        scrollbar-width: thin;
+
+        /* For Internet Explorer and Edge */
+        -ms-overflow-style: thin;
+      }
+
+      /* For Chrome, Safari, and Opera */
+      html::-webkit-scrollbar {
+        display: none;
+      }
+
       body {
         font-family:
           -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         margin: 0;
-        padding: 0 12px 12px 12px;
-        background-color: #1f1f1f;
-        color: #ffffff;
+        padding: 0 8px 12px 8px;
+        background-color: var(--bg-color);
+        color: var(--text-color);
         font-size: 13px;
       }
       .solid-bg {
-        background-color: #1f1f1f;
+        background-color: var(--bg-color);
+      }
+      .sticky-header {
+        position: sticky;
+        top: 0;
+        padding: 12px 0 8px 0;
+        z-index: 10;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 10px;
       }
       .header {
         display: flex;
@@ -38,8 +105,8 @@
         width: 16px;
         height: 16px;
         border-radius: 50%;
-        background: #383838;
-        color: #aaa;
+        background: var(--info-bg);
+        color: var(--info-text);
         font-size: 11px;
         font-weight: bold;
         position: relative;
@@ -49,22 +116,22 @@
         position: absolute;
         top: 22px;
         left: 0;
-        background: #333;
-        color: #fff;
+        background: var(--tooltip-bg);
+        color: #ffffff;
         padding: 8px;
         border-radius: 6px;
         font-size: 11px;
-        white-space: pre-wrap; /* Ensures \A creates linebreaks properly */
+        white-space: pre-wrap;
         width: 160px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
         z-index: 100;
       }
       .counter-badge {
         font-size: 12px;
-        background: #333;
+        background: var(--badge-bg);
         padding: 2px 6px;
         border-radius: 10px;
-        color: #aaa;
+        color: var(--text-subtle);
       }
       .controls-grid {
         display: grid;
@@ -75,12 +142,6 @@
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
-      }
-      .sticky-header {
-        position: sticky;
-        top: 0;
-        padding: 12px 0 4px 0;
-        margin-bottom: 2px solid #aaa;
       }
       button {
         flex: 1;
@@ -101,19 +162,27 @@
       .btn-play:not(:disabled):hover {
         background: #ff0000;
       }
+      .btn-next {
+        background: var(--card-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+      }
+      .btn-next:not(:disabled):hover {
+        background: var(--card-hover);
+      }
       .btn-clear {
-        background: #383838;
-        color: #ff5555;
+        background: var(--btn-clear-bg);
+        color: var(--btn-clear-text);
       }
       .btn-clear:not(:disabled):hover {
-        background: #484848;
+        background: var(--btn-clear-hover);
       }
       .setting-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
         font-size: 12px;
-        color: #ccc;
+        color: var(--text-setting);
         margin-bottom: 2px;
       }
       .setting-row label {
@@ -132,7 +201,7 @@
       }
       .sync-status-row {
         font-size: 11px;
-        color: #888;
+        color: var(--text-muted);
         margin-left: 23px;
         margin-top: -2px;
         margin-bottom: 4px;
@@ -146,9 +215,9 @@
         flex: 1 1 100%;
       }
       select {
-        background: #2b2b2b;
-        color: white;
-        border: 1px solid #444;
+        background: var(--card-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
         padding: 4px;
         border-radius: 4px;
       }
@@ -156,7 +225,7 @@
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        color: #888;
+        color: var(--text-muted);
         margin: 12px 0 6px 0;
       }
       ul {
@@ -167,7 +236,7 @@
       li {
         display: flex;
         align-items: center;
-        background: #2b2b2b;
+        background: var(--card-bg);
         margin-bottom: 6px;
         padding: 6px;
         border-radius: 4px;
@@ -175,8 +244,8 @@
         border: 1px solid transparent;
       }
       li.playing {
-        border-color: #ff0000;
-        background: #362020;
+        border-color: var(--playing-border);
+        background: var(--playing-bg);
       }
       li.played-item {
         opacity: 0.6;
@@ -201,24 +270,13 @@
       }
       .remove-btn {
         background: transparent;
-        color: #888;
+        color: var(--text-muted);
         font-size: 12px;
         padding: 4px;
         flex: initial;
       }
       .remove-btn:hover {
-        color: white;
-      }
-      #drop-zone {
-        border: 2px dashed #444;
-        border-radius: 4px;
-        padding: 18px;
-        text-align: center;
-        color: #888;
-        margin-top: 10px;
-        margin-bottom: 8px;
-        font-size: 11px;
-        cursor: default;
+        color: var(--text-color);
       }
       .foldable-header {
         cursor: pointer;
@@ -231,7 +289,7 @@
       }
 
       .foldable-header:hover {
-        color: #ffffff;
+        color: var(--text-color);
       }
 
       #played-list-container.collapsed {
@@ -239,11 +297,11 @@
       }
       /* Drag & Drop Feedback Styles */
       li.drag-over-above {
-        border-top: 3px solid #3ea6ff !important;
+        border-top: 3px solid var(--drag-indicator) !important;
       }
 
       li.drag-over-below {
-        border-bottom: 3px solid #3ea6ff !important;
+        border-bottom: 3px solid var(--drag-indicator) !important;
       }
 
       li.dragging {
@@ -266,8 +324,6 @@
         <button id="next-btn" class="btn-next">⏭ Skip</button>
         <button id="clear-btn" class="btn-clear">Clear</button>
       </div>
-
-      <div id="drop-zone">Drop YouTube Links Here</div>
     </div>
 
     <div class="controls-grid">
