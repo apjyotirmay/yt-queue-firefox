@@ -10,6 +10,7 @@ if (typeof browser !== "undefined" && browser.action && browser.sidebarAction) {
   });
 }
 
+
 // Helper to choose storage target
 async function getStorageEngine() {
   const settings = await browser.storage.local.get("storageMode");
@@ -100,10 +101,14 @@ async function safeAddToQueue(videoToAdd) {
 }
 
 // Track tab closure to reset playerTabId cleanly in storage
+// Track tab closure: reset playerTabId and mark playback as paused
 browser.tabs.onRemoved.addListener(async (tabId) => {
   const { playerTabId } = await browser.storage.local.get("playerTabId");
   if (tabId === playerTabId) {
+    const activeStorage = await getStorageEngine();
     await browser.storage.local.set({ playerTabId: null });
+    await activeStorage.set({ isPlaying: false });
+    await browser.storage.local.set({ isPlaying: false });
   }
 });
 
@@ -113,6 +118,13 @@ browser.runtime.onInstalled.addListener(() => {
     title: "Add YouTube link to Queue",
     contexts: ["link"],
   });
+});
+
+// Reset playback state to paused when the browser launches
+browser.runtime.onStartup.addListener(async () => {
+  const activeStorage = await getStorageEngine();
+  await activeStorage.set({ isPlaying: false });
+  await browser.storage.local.set({ isPlaying: false });
 });
 
 browser.contextMenus.onClicked.addListener(async (info) => {
