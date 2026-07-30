@@ -1,6 +1,13 @@
-// Automatically open the side panel when the user clicks the action icon in Chrome/Edge
+// Enable side panel opening on toolbar icon click for Chrome/Edge
 if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+}
+
+// Enable sidebar toggle on toolbar icon click for Firefox
+if (typeof browser !== "undefined" && browser.action && browser.sidebarAction) {
+  browser.action.onClicked.addListener(() => {
+    browser.sidebarAction.toggle();
+  });
 }
 
 // Helper to choose storage target
@@ -41,17 +48,17 @@ async function fetchVideoTitle(videoId) {
 }
 
 // Safely appends video item enforcing Fetch-First Guard & Deduplication
+// Safely appends video item enforcing Fetch-First Guard & Deduplication
 async function safeAddToQueue(videoToAdd) {
   const settings = await browser.storage.local.get("storageMode");
   const isSync = settings.storageMode === "sync";
 
   let currentQueue = [];
-  let currentPlayed = [];
 
   if (isSync) {
     // 1. FETCH-FIRST GUARD: Fetch existing Cloud data first
-    const cloudData = await browser.storage.sync.get(["queue", "playedQueue"]);
-    const localData = await browser.storage.local.get(["queue", "playedQueue"]);
+    const cloudData = await browser.storage.sync.get(["queue"]);
+    const localData = await browser.storage.local.get(["queue"]);
 
     const remoteQueue = cloudData.queue || [];
     const localQueue = localData.queue || [];
@@ -60,9 +67,8 @@ async function safeAddToQueue(videoToAdd) {
     const localIds = new Set(localQueue.map((item) => item.id));
     const newRemoteQueue = remoteQueue.filter((item) => !localIds.has(item.id));
 
-    // Append unique remote items to local queue (FIFO preservation)
+    // Append unique remote items to local queue
     currentQueue = [...localQueue, ...newRemoteQueue];
-    currentPlayed = localData.playedQueue || [];
   } else {
     const localData = await browser.storage.local.get("queue");
     currentQueue = localData.queue || [];
@@ -80,10 +86,16 @@ async function safeAddToQueue(videoToAdd) {
   }
 
   // 3. PERSIST STATE ACCORDINGLY
+  // Local gets full objects
   await browser.storage.local.set({ queue: currentQueue });
 
   if (isSync) {
-    await browser.storage.sync.set({ queue: currentQueue });
+    // Sync gets minimal payloads (only id & title if available)
+    const compressedSyncQueue = currentQueue.map((item) => ({
+      id: item.id,
+      title: item.title,
+    }));
+    await browser.storage.sync.set({ queue: compressedSyncQueue });
   }
 }
 

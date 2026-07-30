@@ -149,7 +149,6 @@ function updateSyncStatusUI() {
 // Save queue helper with self-save flag protection and write buffer handling
 async function saveState() {
   if (isSyncing) {
-    // Snapshot current mutation into write buffer during active sync
     writeBuffer.push({
       queue: JSON.parse(JSON.stringify(queue)),
       playedQueue: JSON.parse(JSON.stringify(playedQueue)),
@@ -159,7 +158,24 @@ async function saveState() {
   }
 
   isSelfSaving = true;
-  await activeStorage.set({ queue, playedQueue, currentPlayingId });
+
+  // 1. Save full state locally
+  await browser.storage.local.set({ queue, playedQueue, currentPlayingId });
+
+  // 2. Immediately reflect deletion/reordering in Sync storage
+  const settings = await browser.storage.local.get("storageMode");
+  if (settings.storageMode === "sync") {
+    try {
+      await browser.storage.sync.set({
+        queue: compressQueueForSync(queue),
+        playedQueue: compressQueueForSync(playedQueue),
+        currentPlayingId,
+      });
+    } catch (err) {
+      console.warn("Failed to update Cloud Sync on local save:", err);
+    }
+  }
+
   setTimeout(() => {
     isSelfSaving = false;
   }, 200);
@@ -173,15 +189,15 @@ async function performCloudSync() {
   isSyncing = true;
 
   try {
-    // 1. FETCH-FIRST GUARD: Always pull Cloud state before writing
+    // 1. FETCH-FIRST GUARD
     const cloudData = await browser.storage.sync.get([
       "queue",
       "playedQueue",
       "currentPlayingId",
     ]);
 
-    const remoteQueue = cloudData.queue || [];
-    const remotePlayed = cloudData.playedQueue || [];
+    const remoteQueue = (cloudData.queue || []).map(rehydrateQueueItem);
+    const remotePlayed = (cloudData.playedQueue || []).map(rehydrateQueueItem);
 
     // 2. MERGE & DEDUPLICATE ACTIVE QUEUE
     const localQueueIds = new Set(queue.map((item) => item.id));
@@ -189,7 +205,6 @@ async function performCloudSync() {
       (item) => !localQueueIds.has(item.id),
     );
 
-    // Local items remain at the head (FIFO priority), Cloud appended to the end
     queue = [...queue, ...newRemoteQueue];
 
     // 3. MERGE & DEDUPLICATE PLAYED QUEUE
@@ -199,12 +214,11 @@ async function performCloudSync() {
     );
     playedQueue = [...playedQueue, ...newRemotePlayed];
 
-    // Preserve playing state if local doesn't have one
     if (!currentPlayingId && cloudData.currentPlayingId) {
       currentPlayingId = cloudData.currentPlayingId;
     }
 
-    // 4. DRAIN CONCURRENT WRITE BUFFER
+    // 4. DRAIN WRITE BUFFER
     if (writeBuffer.length > 0) {
       const latestState = writeBuffer[writeBuffer.length - 1];
       queue = latestState.queue;
@@ -213,7 +227,7 @@ async function performCloudSync() {
       writeBuffer = [];
     }
 
-    // 5. UPDATE LOCAL, TIMESTAMP & PUSH UNIFIED STATE TO CLOUD
+    // 5. UPDATE LOCAL, TIMESTAMP & PUSH COMPRESSED STATE TO CLOUD
     lastSyncedAt = Date.now();
     await browser.storage.local.set({
       queue,
@@ -223,7 +237,11 @@ async function performCloudSync() {
     });
 
     isSelfSaving = true;
-    await browser.storage.sync.set({ queue, playedQueue, currentPlayingId });
+    await browser.storage.sync.set({
+      queue: compressQueueForSync(queue),
+      playedQueue: compressQueueForSync(playedQueue),
+      currentPlayingId,
+    });
     setTimeout(() => {
       isSelfSaving = false;
     }, 200);
@@ -318,6 +336,25 @@ async function addVideoToQueue(newVideo, targetIndex = null) {
   if (settings.storageMode === "sync") {
     await performCloudSync();
   }
+}
+
+// Strip bloated metadata before pushing to storage.sync
+function compressQueueForSync(queueArray) {
+  return (queueArray || []).map((item) => ({
+    id: item.id,
+    title: item.title,
+  }));
+}
+
+// Rehydrate sync items with standard URLs and thumbnails
+function rehydrateQueueItem(item) {
+  return {
+    id: item.id,
+    title: item.title || "YouTube Video",
+    url: item.url || `https://www.youtube.com/watch?v=${item.id}`,
+    thumbnail:
+      item.thumbnail || `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
+  };
 }
 
 async function getStorageEngine() {
@@ -540,13 +577,10 @@ function createVideoItem(item, index, isPlayed) {
     } else {
       queue.splice(index, 1);
     }
+
+    // saveState() now handles writing to local AND sync immediately!
     await saveState();
     renderQueue();
-
-    const settings = await browser.storage.local.get("storageMode");
-    if (settings.storageMode === "sync") {
-      await performCloudSync();
-    }
   });
 
   li.appendChild(img);

@@ -1,4 +1,4 @@
-const fs = require('fs-extra') ? require('fs-extra') : require('fs');
+const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 
