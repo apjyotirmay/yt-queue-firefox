@@ -1,310 +1,264 @@
-// Enable side panel opening on toolbar icon click for Chrome/Edge
-if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+const api = typeof browser !== "undefined" ? browser : chrome;
+console.log("[QueueExt:Background] Background script initialized.");
+
+// Panel/Sidebar Initialization
+if (api.sidePanel && api.sidePanel.setPanelBehavior) {
+  api.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+} else if (api.sidebarAction) {
+  api.action?.onClicked.addListener(() => api.sidebarAction.toggle());
 }
 
-// Enable sidebar toggle on toolbar icon click for Firefox
-if (typeof browser !== "undefined" && browser.action && browser.sidebarAction) {
-  browser.action.onClicked.addListener(() => {
-    browser.sidebarAction.toggle();
-  });
-}
-
-
-// Helper to choose storage target
 async function getStorageEngine() {
-  const settings = await browser.storage.local.get("storageMode");
-  return settings.storageMode === "sync"
-    ? browser.storage.sync
-    : browser.storage.local;
+  const settings = await api.storage.local.get("storageMode");
+  return settings.storageMode === "sync" ? api.storage.sync : api.storage.local;
 }
 
 function extractVideoId(url) {
   try {
     const parsed = new URL(url);
-    if (parsed.hostname.includes("youtube.com")) {
-      return parsed.searchParams.get("v");
-    } else if (parsed.hostname.includes("youtu.be")) {
-      return parsed.pathname.slice(1);
-    }
-  } catch (e) {
-    return null;
-  }
+    if (parsed.hostname.includes("youtube.com")) return parsed.searchParams.get("v");
+    if (parsed.hostname.includes("youtu.be")) return parsed.pathname.slice(1);
+  } catch (e) {}
   return null;
 }
 
 async function fetchVideoTitle(videoId) {
   try {
-    const res = await fetch(
-      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
-    );
+    const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
     if (res.ok) {
       const data = await res.json();
       return data.title;
     }
   } catch (e) {
-    console.error("Failed to fetch title:", e);
+    console.error("[QueueExt:Background] Failed to fetch title:", e);
   }
   return `Video (${videoId})`;
 }
 
-// Safely appends video item enforcing Fetch-First Guard & Deduplication
-// Safely appends video item enforcing Fetch-First Guard & Deduplication
 async function safeAddToQueue(videoToAdd) {
-  const settings = await browser.storage.local.get("storageMode");
+  console.log("[QueueExt:Background] safeAddToQueue called with:", videoToAdd);
+  const settings = await api.storage.local.get("storageMode");
   const isSync = settings.storageMode === "sync";
 
+  const normalizedVideo = {
+    ...videoToAdd,
+    url: videoToAdd.url || `https://www.youtube.com/watch?v=${videoToAdd.id}`,
+    thumbnail: videoToAdd.thumbnail || `https://i.ytimg.com/vi/${videoToAdd.id}/hqdefault.jpg`,
+  };
+
   let currentQueue = [];
-
   if (isSync) {
-    // 1. FETCH-FIRST GUARD: Fetch existing Cloud data first
-    const cloudData = await browser.storage.sync.get(["queue"]);
-    const localData = await browser.storage.local.get(["queue"]);
-
+    const cloudData = await api.storage.sync.get(["queue"]);
+    const localData = await api.storage.local.get(["queue"]);
     const remoteQueue = cloudData.queue || [];
     const localQueue = localData.queue || [];
-
-    // Deduplicate Cloud data against local queue items
     const localIds = new Set(localQueue.map((item) => item.id));
     const newRemoteQueue = remoteQueue.filter((item) => !localIds.has(item.id));
-
-    // Append unique remote items to local queue
     currentQueue = [...localQueue, ...newRemoteQueue];
   } else {
-    const localData = await browser.storage.local.get("queue");
+    const localData = await api.storage.local.get("queue");
     currentQueue = localData.queue || [];
   }
 
-  // 2. DEDUPLICATE NEW ITEM
-  const existingIndex = currentQueue.findIndex((i) => i.id === videoToAdd.id);
+  const existingIndex = currentQueue.findIndex((i) => i.id === normalizedVideo.id);
   if (existingIndex !== -1) {
-    currentQueue[existingIndex] = {
-      ...currentQueue[existingIndex],
-      ...videoToAdd,
-    };
+    currentQueue[existingIndex] = { ...currentQueue[existingIndex], ...normalizedVideo };
   } else {
-    currentQueue.push(videoToAdd);
+    currentQueue.push(normalizedVideo);
   }
 
-  // 3. PERSIST STATE ACCORDINGLY
-  // Local gets full objects
-  await browser.storage.local.set({ queue: currentQueue });
-
+  await api.storage.local.set({ queue: currentQueue });
   if (isSync) {
-    // Sync gets minimal payloads (only id & title if available)
-    const compressedSyncQueue = currentQueue.map((item) => ({
-      id: item.id,
-      title: item.title,
-    }));
-    await browser.storage.sync.set({ queue: compressedSyncQueue });
+    const compressedSyncQueue = currentQueue.map((item) => ({ id: item.id, title: item.title }));
+    await api.storage.sync.set({ queue: compressedSyncQueue });
   }
+  console.log("[QueueExt:Background] Updated queue count:", currentQueue.length);
 }
 
-// Track tab closure to reset playerTabId cleanly in storage
-// Track tab closure: reset playerTabId and mark playback as paused
-browser.tabs.onRemoved.addListener(async (tabId) => {
-  const { playerTabId } = await browser.storage.local.get("playerTabId");
+async function loadInPlayerTab(url, active = true) {
+  if (!url) {
+    console.error("[QueueExt:Background] Aborting: loadInPlayerTab received an invalid or undefined URL!");
+    return null;
+  }
+
+  console.log("[QueueExt:Background] loadInPlayerTab target URL:", url, "active:", active);
+  let { playerTabId } = await api.storage.local.get("playerTabId");
+
+  if (playerTabId) {
+    try {
+      const tab = await api.tabs.get(playerTabId);
+      if (tab) {
+        console.log("[QueueExt:Background] Found existing tab ID", playerTabId, "- updating URL.");
+        await api.tabs.update(playerTabId, { url, active });
+        return playerTabId;
+      }
+    } catch (e) {
+      console.warn("[QueueExt:Background] Stored tab ID no longer valid, resetting.");
+      await api.storage.local.set({ playerTabId: null });
+    }
+  }
+
+  console.log("[QueueExt:Background] Creating NEW player tab for:", url);
+  const newTab = await api.tabs.create({ url, active });
+  console.log("[QueueExt:Background] New tab created with ID:", newTab.id);
+  await api.storage.local.set({ playerTabId: newTab.id });
+  return newTab.id;
+}
+
+api.tabs.onRemoved.addListener(async (tabId) => {
+  const { playerTabId } = await api.storage.local.get("playerTabId");
   if (tabId === playerTabId) {
+    console.log("[QueueExt:Background] Player tab closed by user.");
     const activeStorage = await getStorageEngine();
-    await browser.storage.local.set({ playerTabId: null });
+    await api.storage.local.set({ playerTabId: null, isPlaying: false });
     await activeStorage.set({ isPlaying: false });
-    await browser.storage.local.set({ isPlaying: false });
   }
 });
 
-browser.runtime.onInstalled.addListener(() => {
-  browser.contextMenus.create({
+api.runtime.onInstalled.addListener(() => {
+  api.contextMenus.create({
     id: "add-to-queue",
     title: "Add YouTube link to Queue",
     contexts: ["link"],
   });
 });
 
-// Reset playback state to paused when the browser launches
-browser.runtime.onStartup.addListener(async () => {
-  const activeStorage = await getStorageEngine();
-  await activeStorage.set({ isPlaying: false });
-  await browser.storage.local.set({ isPlaying: false });
-});
-
-browser.contextMenus.onClicked.addListener(async (info) => {
+api.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId === "add-to-queue" && info.linkUrl) {
     const videoId = extractVideoId(info.linkUrl);
     if (!videoId) return;
 
     const title = await fetchVideoTitle(videoId);
-    const videoToAdd = {
+    await safeAddToQueue({
       id: videoId,
       title,
       url: `https://www.youtube.com/watch?v=${videoId}`,
       thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    };
-
-    await safeAddToQueue(videoToAdd);
-  }
-});
-
-browser.commands.onCommand.addListener(async (command) => {
-  if (command === "add-to-queue-hotkey") {
-    const [tab] = await browser.tabs.query({
-      active: true,
-      currentWindow: true,
     });
-    if (tab && tab.id) {
-      browser.tabs.sendMessage(tab.id, { type: "HOTKEY_TRIGGERED" });
-    }
   }
 });
 
-// Update active video ID in storage when the player tab navigates to a video
-browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  const { playerTabId } = await browser.storage.local.get("playerTabId");
-  if (
-    tabId === playerTabId &&
-    changeInfo.status === "complete" &&
-    tab.url &&
-    tab.url.includes("youtube.com/watch")
-  ) {
-    const match = tab.url.match(/(?:v=|youtu\.be\/)([\w-]{11})/);
-    if (match) {
-      const activeId = match[1];
-      const storage = await getStorageEngine();
-      await storage.set({ currentPlayingId: activeId });
-    }
+// NON-ASYNC top-level listener to prevent Firefox promise scoping issues
+api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log("[QueueExt:Background] Received message:", message, "from sender:", sender?.tab ? `Tab ${sender.tab.id}` : "Sidebar/Popup");
+
+  if (message.action === "CHECK_PLAYBACK_STATE") {
+    api.storage.local.get("isPlaying").then(({ isPlaying }) => {
+      sendResponse({ shouldPlay: !!isPlaying });
+    });
+    return true; // Keep message channel open asynchronously ONLY for this action
   }
-});
 
-browser.runtime.onMessage.addListener(async (message) => {
-  const activeStorage = await getStorageEngine();
+  (async () => {
+    try {
+      const activeStorage = await getStorageEngine();
 
-  async function loadInPlayerTab(url, active = true) {
-    let tabExists = false;
-    let { playerTabId } = await browser.storage.local.get("playerTabId");
+      switch (message.type) {
+        case "PLAY_VIDEO": {
+          const targetUrl = message.url || (message.id ? `https://www.youtube.com/watch?v=${message.id}` : null);
+          console.log("[QueueExt:Background] Action PLAY_VIDEO triggered for URL:", targetUrl);
+          if (!targetUrl) break;
 
-    if (playerTabId) {
-      try {
-        await browser.tabs.get(playerTabId);
-        await browser.tabs.update(playerTabId, { url, active });
-        tabExists = true;
-      } catch (e) {
-        playerTabId = null;
-        await browser.storage.local.set({ playerTabId: null });
+          const shouldFocus = message.focus !== undefined ? message.focus : true;
+          await activeStorage.set({ isPlaying: true });
+          await api.storage.local.set({ isPlaying: true });
+          await loadInPlayerTab(targetUrl, shouldFocus);
+          break;
+        }
+
+        case "CONTROL_PLAYER": {
+          console.log("[QueueExt:Background] Action CONTROL_PLAYER command:", message.command);
+          let { playerTabId } = await api.storage.local.get("playerTabId");
+          let tabExists = false;
+
+          if (playerTabId) {
+            try {
+              const tab = await api.tabs.get(playerTabId);
+              if (tab) {
+                tabExists = true;
+                api.tabs.sendMessage(playerTabId, { command: message.command }).catch((err) => {
+                  console.error("[QueueExt:Background] Error sending message to player tab:", err);
+                });
+              }
+            } catch (e) {
+              await api.storage.local.set({ playerTabId: null });
+            }
+          }
+
+          if (!tabExists) {
+            console.log("[QueueExt:Background] No player tab exists. Launching target video from queue...");
+            const localData = await api.storage.local.get(["queue", "currentPlayingId"]);
+            const queue = localData.queue || [];
+            const targetVideo = queue.find((i) => i.id === localData.currentPlayingId) || queue[0];
+
+            if (targetVideo) {
+              const videoUrl = targetVideo.url || `https://www.youtube.com/watch?v=${targetVideo.id}`;
+              await activeStorage.set({ isPlaying: true, currentPlayingId: targetVideo.id });
+              await api.storage.local.set({ isPlaying: true });
+              await loadInPlayerTab(videoUrl, true);
+            } else {
+              console.warn("[QueueExt:Background] Queue is empty, cannot launch video.");
+            }
+          }
+          break;
+        }
+
+        case "VIDEO_ENDED": {
+          console.log("[QueueExt:Background] Action VIDEO_ENDED received.");
+          const data = await activeStorage.get(["queue", "playedQueue", "autoplay", "currentPlayingId"]);
+          let queue = data.queue || [];
+          let playedQueue = data.playedQueue || [];
+          const afterPlayMode = (await api.storage.local.get("afterPlay")).afterPlay || "remove";
+
+          if (queue.length > 0) {
+            const activeIdx = queue.findIndex((i) => i.id === data.currentPlayingId);
+            const finishedVideo = activeIdx !== -1 ? queue.splice(activeIdx, 1)[0] : queue.shift();
+
+            if (afterPlayMode === "keep" && finishedVideo) playedQueue.push(finishedVideo);
+
+            if (data.autoplay !== false && queue.length > 0) {
+              const nextVideo = queue[0];
+              const nextUrl = nextVideo.url || `https://www.youtube.com/watch?v=${nextVideo.id}`;
+              console.log("[QueueExt:Background] Autoplaying next video:", nextVideo);
+              await activeStorage.set({ queue, playedQueue, currentPlayingId: nextVideo.id, isPlaying: true });
+              await api.storage.local.set({ isPlaying: true });
+              await loadInPlayerTab(nextUrl, false);
+            } else {
+              console.log("[QueueExt:Background] Queue finished or Autoplay disabled.");
+              await activeStorage.set({ queue, playedQueue, currentPlayingId: null, isPlaying: false });
+              await api.storage.local.set({ isPlaying: false });
+            }
+          }
+          break;
+        }
+
+        case "PLAYER_STATUS":
+        case "PLAYER_STATE_CHANGED": {
+          if (message.isPlaying !== undefined) {
+            await activeStorage.set({ isPlaying: message.isPlaying });
+            await api.storage.local.set({ isPlaying: message.isPlaying });
+          }
+          break;
+        }
+
+        case "ADD_TO_QUEUE": {
+          let title = message.video.title;
+          if (!title || title.startsWith("Video (")) {
+            title = await fetchVideoTitle(message.video.id);
+          }
+          await safeAddToQueue({
+            id: message.video.id,
+            title,
+            url: message.video.url || `https://www.youtube.com/watch?v=${message.video.id}`,
+            thumbnail: `https://i.ytimg.com/vi/${message.video.id}/hqdefault.jpg`,
+          });
+          break;
+        }
       }
+    } catch (err) {
+      console.error("[QueueExt:Background] Error processing runtime message:", err);
     }
+  })();
 
-    if (!tabExists) {
-      const tab = await browser.tabs.create({ url, active });
-      await browser.storage.local.set({ playerTabId: tab.id });
-    }
-  }
-
-  // 1. PLAY_VIDEO: Triggered by clicking an item
-  if (message.type === "PLAY_VIDEO") {
-    const shouldFocus = message.focus !== undefined ? message.focus : true;
-    await loadInPlayerTab(message.url, shouldFocus);
-  }
-
-  // 2. CONTROL_PLAYER: Send play/pause toggle command directly to video
-  if (message.type === "CONTROL_PLAYER") {
-    let tabExists = false;
-    let { playerTabId } = await browser.storage.local.get("playerTabId");
-
-    if (playerTabId) {
-      try {
-        await browser.tabs.get(playerTabId);
-        await browser.tabs.sendMessage(playerTabId, {
-          command: message.command,
-        });
-        tabExists = true;
-      } catch (e) {
-        await browser.storage.local.set({ playerTabId: null });
-      }
-    }
-
-    // Fallback if no player tab exists
-    if (!tabExists) {
-      const data = await activeStorage.get(["queue", "currentPlayingId"]);
-      const queue = data.queue || [];
-      const targetVideo =
-        queue.find((i) => i.id === data.currentPlayingId) || queue[0];
-
-      if (targetVideo) {
-        await loadInPlayerTab(targetVideo.url);
-        await activeStorage.set({
-          isPlaying: true,
-          currentPlayingId: targetVideo.id,
-        });
-      }
-    }
-  }
-
-  // 3. VIDEO_ENDED: Automatically advance to next video
-  if (message.type === "VIDEO_ENDED") {
-    const data = await activeStorage.get([
-      "queue",
-      "playedQueue",
-      "autoplay",
-      "currentPlayingId",
-    ]);
-    const isAutoplayEnabled = data.autoplay !== false;
-
-    let queue = data.queue || [];
-    let playedQueue = data.playedQueue || [];
-    const afterPlayMode =
-      (await browser.storage.local.get("afterPlay")).afterPlay || "remove";
-
-    if (queue.length > 0) {
-      const activeIdx = queue.findIndex((i) => i.id === data.currentPlayingId);
-      const finishedVideo =
-        activeIdx !== -1 ? queue.splice(activeIdx, 1)[0] : queue.shift();
-
-      if (afterPlayMode === "keep" && finishedVideo) {
-        playedQueue.push(finishedVideo);
-      }
-
-      if (isAutoplayEnabled && queue.length > 0) {
-        const nextVideo = queue[0];
-        await activeStorage.set({
-          queue,
-          playedQueue,
-          currentPlayingId: nextVideo.id,
-          isPlaying: true,
-        });
-
-        await loadInPlayerTab(nextVideo.url, false);
-      } else {
-        await activeStorage.set({
-          queue,
-          playedQueue,
-          currentPlayingId: null,
-          isPlaying: false,
-        });
-      }
-    }
-  }
-
-  // 4. PLAYER_STATUS & PLAYER_STATE_CHANGED: Save state from content script
-  if (
-    message.type === "PLAYER_STATUS" ||
-    message.type === "PLAYER_STATE_CHANGED"
-  ) {
-    if (message.isPlaying !== undefined) {
-      await activeStorage.set({ isPlaying: message.isPlaying });
-    }
-  }
-
-  if (message.type === "ADD_TO_QUEUE") {
-    let title = message.video.title;
-    if (!title || title.startsWith("Video (")) {
-      title = await fetchVideoTitle(message.video.id);
-    }
-    const videoToAdd = {
-      id: message.video.id,
-      title,
-      url: message.video.url,
-      thumbnail: `https://i.ytimg.com/vi/${message.video.id}/hqdefault.jpg`,
-    };
-
-    await safeAddToQueue(videoToAdd);
-  }
+  return false; // Tells Firefox no sendResponse promise is expected
 });
