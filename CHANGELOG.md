@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.5.2] - 2026-07-31
+- Fix: Firefox playback button
+
+## [3.5.1] - 2026-07-31
+- Ported to Google Chrome
+- Optimized storage for sync - increases queue size
+- Fixes conflict on cloud sync with local queue
+
 ## [3.5.0] - 2026-07-29
 
 ### Added
