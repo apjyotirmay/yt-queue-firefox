@@ -2,18 +2,7 @@
   "manifest_version": 3,
   "name": "YouTube Queue Sidebar",
   "version": "3.5.0",
-  "description": "Firefox sidebar queue manager with Alt+Click, Alt+Q, and Mozilla Sync.",
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "yt-queue-sidebar@jyotirmay.dev",
-      "strict_min_version": "109.0",
-      "data_collection_permissions": {
-        "required": [
-          "none"
-        ]
-      }
-    }
-  },
+  "description": "YouTube queue manager with Alt+Click, Alt+Q, and Cloud Sync.",
   "permissions": [
     "storage",
     "contextMenus",
@@ -23,9 +12,6 @@
   "host_permissions": [
     "*://*.youtube.com/*"
   ],
-  "background": {
-    "scripts": ["background.js"]
-  },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -33,13 +19,8 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_icon": "icons/icon-48.png",
-    "default_title": "YouTube Queue Sidebar"
-  },
-  "sidebar_action": {
-    "default_title": "YouTube Queue",
-    "default_panel": "sidebar.html",
-    "default_icon": "icons/icon32.png"
+    "default_icon": "icons/icon48.png",
+    "default_title": "YouTube Queue"
   },
   "commands": {
     "add-to-queue-hotkey": {
@@ -48,12 +29,12 @@
       },
       "description": "Add hovered video or active tab to queue"
     },
-    "_execute_sidebar_action": {
+    "_execute_action": {
       "suggested_key": {
         "default": "Ctrl+Shift+Y",
         "mac": "Command+Shift+Y"
       },
-      "description": "Toggle YouTube Queue Sidebar"
+      "description": "Toggle YouTube Queue Panel"
     }
   },
   "content_scripts": [

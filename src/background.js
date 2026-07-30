@@ -1,3 +1,8 @@
+// Automatically open the side panel when the user clicks the action icon in Chrome/Edge
+if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+}
+
 // Helper to choose storage target
 async function getStorageEngine() {
   const settings = await browser.storage.local.get("storageMode");

@@ -1,0 +1,12 @@
+{
+  "name": "youtube-queue-sidebar",
+  "version": "3.5.0",
+  "description": "Cross-browser YouTube Queue Extension",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.js"
+  },
+  "devDependencies": {
+    "archiver": "^7.0.0"
+  }
+}
