@@ -35,14 +35,18 @@ async function fetchVideoTitle(videoId) {
 }
 
 async function notifyVideoAdded(messageText = "✓ Added to Queue") {
+  // 1. Send to sidebar/popup runtime (safely catch if sidebar is closed)
+  browser.runtime.sendMessage({ type: "SHOW_TOAST", message: messageText }).catch(() => {});
+
+  // 2. Send to active tab's content script (safely catch if page isn't ready)
   try {
     const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (activeTab?.id) {
       browser.tabs.sendMessage(activeTab.id, { type: "SHOW_TOAST", message: messageText }).catch(() => {});
     }
-  } catch (e) {}
-
-  browser.runtime.sendMessage({ type: "SHOW_TOAST", message: messageText }).catch(() => {});
+  } catch (e) {
+    // Suppress tab query failures
+  }
 }
 
 async function safeAddToQueue(videoToAdd) {

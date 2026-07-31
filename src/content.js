@@ -24,17 +24,23 @@
       font-family: Roboto, Arial, sans-serif !important;
       border-radius: 6px !important;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
-      z-index: 9999999 !important;
+      z-index: 2147483647 !important;
       transition: opacity 0.2s ease !important;
       pointer-events: none !important;
       opacity: 1 !important;
     `;
 
-    document.body.appendChild(toast);
+    // Fallback to document.documentElement if document.body isn't ready
+    const container = document.body || document.documentElement;
+    if (container) {
+      container.appendChild(toast);
+    }
 
     setTimeout(() => {
-      toast.style.opacity = "0";
-      setTimeout(() => toast.remove(), 200);
+      if (toast) {
+        toast.style.opacity = "0";
+        setTimeout(() => toast.remove(), 200);
+      }
     }, 1200);
   }
 
@@ -170,25 +176,29 @@
   const initialVideo = getMediaElement();
   if (initialVideo) attachVideoListeners(initialVideo);
 
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // Show toast when triggered by background/extension events
-    if (message.type === "SHOW_TOAST") {
-      showToast(message.message || "✓ Added to Queue");
-      return;
-    }
+  if (!window.hasQueueToastListener) {
+    window.hasQueueToastListener = true;
 
-    // Handle queries from background.js asking for the hovered/active video ID (for Alt+Q)
-    if (message.command === "GET_HOVERED_OR_CURRENT_VIDEO") {
-      const targetId = hoveredVideoId || extractVideoId(window.location.href);
-      sendResponse({ videoId: targetId });
-      return true; // Keep message channel open for async response
-    }
+    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      // Show toast when triggered by background/extension events
+      if (message.type === "SHOW_TOAST") {
+        showToast(message.message || "✓ Added to Queue");
+        return;
+      }
 
-    // Handle player controls (TOGGLE, PLAY, PAUSE)
-    if (message.command) {
-      handleCommand(message.command);
-    }
-  });
+      // Handle queries from background.js asking for the hovered/active video ID (for Alt+Q)
+      if (message.command === "GET_HOVERED_OR_CURRENT_VIDEO") {
+        const targetId = hoveredVideoId || extractVideoId(window.location.href);
+        sendResponse({ videoId: targetId });
+        return; // Synchronous response complete — no need to return true
+      }
+
+      // Handle player controls (TOGGLE, PLAY, PAUSE)
+      if (message.command) {
+        handleCommand(message.command);
+      }
+    });
+  }
 
   // Check state on init using native async promises
   browser.runtime.sendMessage({ action: "CHECK_PLAYBACK_STATE" })
