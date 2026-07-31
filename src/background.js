@@ -144,6 +144,15 @@ browser.runtime.onInstalled.addListener(() => {
     title: "Add YouTube link to Queue",
     contexts: ["link"],
   });
+
+  if (details.reason === "install") {
+    // Opens options/index.html when the extension is installed for the first time
+    if (browser.runtime.openOptionsPage) {
+      browser.runtime.openOptionsPage();
+    } else {
+      browser.tabs.create({ url: browser.runtime.getURL("options/index.html") });
+    }
+  }
 });
 
 browser.contextMenus.onClicked.addListener(async (info) => {
