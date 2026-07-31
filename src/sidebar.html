@@ -2,364 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <style>
-      :root {
-        /* Dark Theme Variables (Default) */
-        --bg-color: #1f1f1f;
-        --text-color: #ffffff;
-        --text-muted: #888888;
-        --text-subtle: #aaaaaa;
-        --text-setting: #cccccc;
-        --card-bg: #2b2b2b;
-        --card-hover: #383838;
-        --border-color: #444444;
-        --info-bg: #383838;
-        --info-text: #aaaaaa;
-        --badge-bg: #333333;
-        --tooltip-bg: #333333;
-        --btn-clear-bg: #383838;
-        --btn-clear-text: #ff5555;
-        --btn-clear-hover: #484848;
-        --playing-bg: #362020;
-        --playing-border: #ff0000;
-        --drag-indicator: #3ea6ff;
-      }
-
-      @media (prefers-color-scheme: light) {
-        :root {
-          /* Light Theme Variables */
-          --bg-color: #ffffff;
-          --text-color: #0f0f0f;
-          --text-muted: #606060;
-          --text-subtle: #606060;
-          --text-setting: #0f0f0f;
-          --card-bg: #f2f2f2;
-          --card-hover: #e5e5e5;
-          --border-color: #cccccc;
-          --info-bg: #e5e5e5;
-          --info-text: #606060;
-          --badge-bg: #e5e5e5;
-          --tooltip-bg: #0f0f0f;
-          --btn-clear-bg: #f2f2f2;
-          --btn-clear-text: #cc0000;
-          --btn-clear-hover: #e5e5e5;
-          --playing-bg: #ffe6e6;
-          --playing-border: #cc0000;
-          --drag-indicator: #065fd4;
-        }
-      }
-
-      html {
-        /* For Firefox */
-        scrollbar-width: thin;
-
-        /* For Internet Explorer and Edge */
-        -ms-overflow-style: thin;
-      }
-
-      /* For Chrome, Safari, and Opera */
-      html::-webkit-scrollbar {
-        display: none;
-      }
-
-      body {
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        margin: 0;
-        padding: 0 8px 12px 8px;
-        background-color: var(--bg-color);
-        color: var(--text-color);
-        font-size: 13px;
-      }
-      .solid-bg {
-        background-color: var(--bg-color);
-      }
-      .sticky-header {
-        position: sticky;
-        top: 0;
-        padding: 12px 0 8px 0;
-        z-index: 10;
-        border-bottom: 1px solid var(--border-color);
-        margin-bottom: 10px;
-      }
-      .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-      }
-      .title-area {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .title-area h2 {
-        margin: 0;
-        font-size: 16px;
-      }
-      .info-icon {
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: var(--info-bg);
-        color: var(--info-text);
-        font-size: 11px;
-        font-weight: bold;
-        position: relative;
-      }
-      .info-icon:hover::after {
-        content: "Shortcuts:\A• Alt + Click thumbnail to add\A• Alt + Q on link/tab to add";
-        position: absolute;
-        top: 22px;
-        left: 0;
-        background: var(--tooltip-bg);
-        color: #ffffff;
-        padding: 8px;
-        border-radius: 6px;
-        font-size: 11px;
-        white-space: pre-wrap;
-        width: 160px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-        z-index: 100;
-      }
-      .counter-badge {
-        font-size: 12px;
-        background: var(--badge-bg);
-        padding: 2px 6px;
-        border-radius: 10px;
-        color: var(--text-subtle);
-      }
-      .controls-grid {
-        display: grid;
-        gap: 8px;
-        margin-bottom: 12px;
-      }
-      .btn-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-      }
-      button {
-        flex: 1;
-        padding: 8px;
-        border: none;
-        border-radius: 4px;
-        font-weight: bold;
-        cursor: pointer;
-      }
-      button:disabled {
-        cursor: not-allowed;
-        opacity: 0.4;
-      }
-      .btn-play {
-        background: #cc0000;
-        color: white;
-      }
-      .btn-play:not(:disabled):hover {
-        background: #ff0000;
-      }
-      .btn-next {
-        background: var(--card-bg);
-        color: var(--text-color);
-        border: 1px solid var(--border-color);
-      }
-      .btn-next:not(:disabled):hover {
-        background: var(--card-hover);
-      }
-      .btn-clear {
-        background: var(--btn-clear-bg);
-        color: var(--btn-clear-text);
-        border: 1px solid var(--border-color);
-      }
-      .btn-clear:not(:disabled):hover {
-        background: var(--btn-clear-hover);
-      }
-      .setting-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 12px;
-        color: var(--text-setting);
-        margin-bottom: 2px;
-      }
-      .setting-row label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        cursor: pointer;
-        font-size: 13px;
-        user-select: none;
-      }
-      .setting-row input[type="checkbox"] {
-        cursor: pointer;
-        width: 15px;
-        height: 15px;
-        margin: 0;
-      }
-      .sync-status-row {
-        font-size: 11px;
-        color: var(--text-muted);
-        margin-left: 23px;
-        margin-top: -2px;
-        margin-bottom: 4px;
-        display: none;
-      }
-      #play-pause-btn,
-      #next-btn {
-        flex: 1;
-      }
-      #clear-btn {
-        flex: 1 1 100%;
-      }
-      select {
-        background: var(--card-bg);
-        color: var(--text-color);
-        border: 1px solid var(--border-color);
-        padding: 4px;
-        border-radius: 4px;
-      }
-      .section-title {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: var(--text-muted);
-        margin: 12px 0 6px 0;
-        font-weight: bold;
-      }
-      ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-      }
-      li {
-        display: flex;
-        align-items: center;
-        background: var(--card-bg);
-        margin-bottom: 6px;
-        padding: 6px;
-        border-radius: 4px;
-        gap: 8px;
-        border: 1px solid transparent;
-      }
-      li.playing {
-        border-color: var(--playing-border);
-        background: var(--playing-bg);
-      }
-      li.played-item {
-        opacity: 0.6;
-      }
-      .thumb-img {
-        width: 48px;
-        height: 36px;
-        object-fit: cover;
-        border-radius: 3px;
-        cursor: pointer;
-      }
-      .info-container {
-        flex: 1;
-        overflow: hidden;
-      }
-      .title {
-        display: block;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        cursor: pointer;
-      }
-      .remove-btn {
-        background: transparent;
-        color: var(--text-muted);
-        font-size: 12px;
-        padding: 4px;
-        flex: initial;
-      }
-      .remove-btn:hover {
-        color: var(--text-color);
-      }
-      .foldable-header {
-        cursor: pointer;
-        user-select: none;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 0;
-        transition: color 0.15s ease;
-      }
-
-      .foldable-header:hover {
-        color: var(--text-color);
-      }
-
-      #played-list-container.collapsed {
-        display: none;
-      }
-      /* Drag & Drop Feedback Styles */
-      li.drag-over-above {
-        border-top: 3px solid var(--drag-indicator) !important;
-      }
-
-      li.drag-over-below {
-        border-bottom: 3px solid var(--drag-indicator) !important;
-      }
-
-      li.dragging {
-        opacity: 0.4;
-      }
-
-      /* #played-toggle-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        cursor: pointer;
-        user-select: none;
-        padding: 6px 8px;
-      } */
-
-      .header-left {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      #clear-played-btn-wrapper {
-        text-align: end;
-        margin-top: 12px;
-      }
-
-      #clear-played-btn {
-        background: transparent;
-        border: 1px solid #aaa;
-        color: #aaa;
-        font-size: 11px;
-        cursor: pointer;
-        padding: 2px 6px;
-        border-radius: 4px;
-        transition: color 0.2s, background-color 0.2s;
-      }
-
-      #clear-played-btn:hover {
-        color: #ff4e4e;
-        border-color: #ff4e4e;
-        background-color: rgba(255, 78, 78, 0.1);
-      }
-
-      #clear-played-btn:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-      }
-
-      #played-arrow {
-        font-size: 1.2rem;
-      }
-
-      .mt-0 {
-        margin-top: 0 !important;
-      }
-    </style>
+    <link rel="stylesheet" href="content.css">
   </head>
   <body>
     <div class="sticky-header solid-bg">
@@ -371,10 +14,20 @@
         <span id="queue-counter" class="counter-badge">0/0</span>
       </div>
 
-      <div class="btn-row">
-        <button id="play-pause-btn" class="btn-play">▶ Play</button>
-        <button id="next-btn" class="btn-next">⏭ Skip</button>
-        <button id="clear-btn" class="btn-clear">Clear</button>
+      <div class="btn-row grid">
+        <div class="row">
+          <button id="play-pause-btn" class="btn-play grow">▶ Play</button>
+          <button id="next-btn" class="btn-next grow">⏭ Skip</button>
+        </div>
+        <div class="row">
+          <button id="clear-btn" class="btn-clear auto">Clear</button>
+          <button id="settings-btn" class="btn-settings min"><!-- Example Lucide Gear SVG (100% vector, monochrome) -->
+            <svg class="icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -393,7 +46,7 @@
         </label>
       </div>
 
-      <div class="setting-row">
+      <!-- <div class="setting-row">
         <label for="cloud-sync-toggle">
           <input type="checkbox" id="cloud-sync-toggle" />
           <span>Enable Cloud Sync</span>
@@ -401,7 +54,15 @@
       </div>
       <div id="sync-status-row" class="sync-status-row">
         Synced: <span id="sync-status-text">never</span>
+      </div> -->
+    </div>
+
+    <div class="sync-status-container">
+      <div id="sync-indicator" class="sync-indicator" title="Storage Status">
+        <span class="status-dot"></span>
+        <span id="sync-status-text" class="status-text">Local Mode</span>
       </div>
+      <span id="sync-time-text" class="sync-time"></span>
     </div>
 
     <div id="played-section" style="display: none">

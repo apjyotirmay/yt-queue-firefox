@@ -1,0 +1,289 @@
+:root {
+  /* Dark Theme Variables (Default) */
+  --bg-color: #1f1f1f;
+  --card-bg: #2b2b2b;
+  --card-hover: #333333;
+  --border-color: #3e3e3e;
+  --text-main: #ffffff;
+  --text-muted: #aaaaaa;
+  --btn-sec-bg: #383838;
+  --btn-sec-hover: #484848;
+  --input-bg: #242424;
+  --kbd-bg: #1a1a1a;
+  --kbd-border: #444444;
+  --accent-red: #cc0000;
+  --accent-hover: #ff0000;
+  --badge-bg: #383838;
+  --badge-text: #cccccc;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Light Theme Variables */
+    --bg-color: #f9f9f9;
+    --card-bg: #ffffff;
+    --card-hover: #f4f4f4;
+    --border-color: #e0e0e0;
+    --text-main: #0f0f0f;
+    --text-muted: #606060;
+    --btn-sec-bg: #f2f2f2;
+    --btn-sec-hover: #e5e5e5;
+    --input-bg: #ffffff;
+    --kbd-bg: #f0f0f0;
+    --kbd-border: #cccccc;
+    --accent-red: #cc0000;
+    --accent-hover: #e60000;
+    --badge-bg: #e5e5e5;
+    --badge-text: #606060;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  padding: 40px 20px;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.container {
+  width: 100%;
+  max-width: 680px;
+}
+
+/* Branding Header */
+.brand-header {
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.brand-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.brand-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brand-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-title-row h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text-main);
+}
+
+.version-badge {
+  font-size: 11px;
+  font-weight: 600;
+  background-color: var(--badge-bg);
+  color: var(--badge-text);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.brand-tagline {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Settings Cards */
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px 24px;
+  transition: border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--border-color);
+}
+
+.card-header h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.description {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+/* Buttons */
+.button-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn.primary {
+  background-color: var(--accent-red);
+  color: #ffffff;
+}
+
+.btn.primary:hover {
+  background-color: var(--accent-hover);
+}
+
+.btn.secondary {
+  background-color: var(--btn-sec-bg);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+}
+
+.btn.secondary:hover {
+  background-color: var(--btn-sec-hover);
+}
+
+/* Form Settings */
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-top: 8px;
+}
+
+.setting-info {
+  flex: 1;
+}
+
+.setting-info label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: var(--text-main);
+}
+
+.subtext {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  display: block;
+}
+
+.select-input {
+  background: var(--input-bg);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  min-width: 210px;
+}
+
+.select-input:focus {
+  border-color: var(--accent-red);
+}
+
+/* Keyboard Shortcuts */
+.shortcut-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.shortcut-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+kbd {
+  background: var(--kbd-bg);
+  border: 1px solid var(--kbd-border);
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-main);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Status Notifications */
+.status-message {
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  display: none;
+}
+
+.status-message.success {
+  display: block;
+  color: #4caf50;
+}
+
+.status-message.error {
+  display: block;
+  color: #f44336;
+}
+
+/* Footer */
+.settings-footer {
+  margin-top: 36px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
