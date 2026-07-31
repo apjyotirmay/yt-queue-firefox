@@ -1,5 +1,3 @@
-const api = typeof browser !== "undefined" ? browser : chrome;
-
 (function () {
   if (window.hasQueueExtContentScript) return;
   window.hasQueueExtContentScript = true;
@@ -15,7 +13,7 @@ const api = typeof browser !== "undefined" ? browser : chrome;
     if (!video) return;
 
     const isPlaying = !video.paused && !video.ended && video.readyState > 2;
-    api.runtime.sendMessage({
+    browser.runtime.sendMessage({
       type: "PLAYER_STATE_CHANGED",
       isPlaying: isPlaying
     }).catch(() => {});
@@ -27,14 +25,17 @@ const api = typeof browser !== "undefined" ? browser : chrome;
 
     if (command === "TOGGLE") {
       if (video.paused) {
-        video.play().catch(() => {});
+        video.play().then(() => reportPlayerState()).catch(() => {});
       } else {
         video.pause();
+        reportPlayerState();
       }
     } else if (command === "PLAY") {
       video.play().catch(() => {});
+      video.play().then(() => reportPlayerState()).catch(() => {});
     } else if (command === "PAUSE") {
       video.pause();
+      reportPlayerState();
     }
   }
 
@@ -47,7 +48,7 @@ const api = typeof browser !== "undefined" ? browser : chrome;
       video.addEventListener(evt, () => {
         if (evt === "ended") {
           console.log("[QueueExt:Content] Video ended.");
-          api.runtime.sendMessage({ type: "VIDEO_ENDED" }).catch(() => {});
+          browser.runtime.sendMessage({ type: "VIDEO_ENDED" }).catch(() => {});
         }
         reportPlayerState();
       });
@@ -56,7 +57,6 @@ const api = typeof browser !== "undefined" ? browser : chrome;
     reportPlayerState();
   }
 
-  // Observer to capture dynamically inserted <video> tags on SPA navigation
   const observer = new MutationObserver(() => {
     const video = getMediaElement();
     if (video) attachVideoListeners(video);
@@ -70,20 +70,21 @@ const api = typeof browser !== "undefined" ? browser : chrome;
   const initialVideo = getMediaElement();
   if (initialVideo) attachVideoListeners(initialVideo);
 
-  api.runtime.onMessage.addListener((message) => {
+  browser.runtime.onMessage.addListener((message) => {
     if (message.command) {
       handleCommand(message.command);
     }
   });
 
-  // Check state on init
-  api.runtime.sendMessage({ action: "CHECK_PLAYBACK_STATE" }, (response) => {
-    if (api.runtime.lastError) return;
-    if (response && response.shouldPlay) {
-      const video = getMediaElement();
-      if (video && video.paused) {
-        video.play().catch(() => {});
+  // Check state on init using native async promises
+  browser.runtime.sendMessage({ action: "CHECK_PLAYBACK_STATE" })
+    .then((response) => {
+      if (response && response.shouldPlay) {
+        const video = getMediaElement();
+        if (video && video.paused) {
+          video.play().catch(() => {});
+        }
       }
-    }
-  });
+    })
+    .catch(() => {});
 })();

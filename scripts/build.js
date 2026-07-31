@@ -70,6 +70,7 @@ async function build() {
       targetManifest.background = { service_worker: 'background.js' };
       targetManifest.permissions.push('sidePanel');
       targetManifest.side_panel = { default_path: 'sidebar.html' };
+      targetManifest.minimum_chrome_version = "148";
     } else if (target === 'firefox') {
       targetManifest.background = { scripts: ['background.js'] };
       targetManifest.sidebar_action = {

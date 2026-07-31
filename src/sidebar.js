@@ -1,5 +1,3 @@
-const api = typeof browser !== "undefined" ? browser : chrome;
-
 const listEl = document.getElementById("queue-list");
 const playedListEl = document.getElementById("played-list");
 const playedSection = document.getElementById("played-section");
@@ -20,7 +18,7 @@ const playedCount = document.getElementById("played-count");
 let queue = [];
 let playedQueue = [];
 let currentPlayingId = null;
-let activeStorage = api.storage.local;
+let activeStorage = browser.storage.local;
 let isPlayedSectionOpen = false;
 let isPlaying = false;
 let lastSyncedAt = null;
@@ -135,12 +133,12 @@ async function saveState() {
   }
 
   isSelfSaving = true;
-  await api.storage.local.set({ queue, playedQueue, currentPlayingId });
+  await browser.storage.local.set({ queue, playedQueue, currentPlayingId });
 
-  const settings = await api.storage.local.get("storageMode");
-  if (settings.storageMode === "sync" && api.storage.sync) {
+  const settings = await browser.storage.local.get("storageMode");
+  if (settings.storageMode === "sync" && browser.storage.sync) {
     try {
-      await api.storage.sync.set({
+      await browser.storage.sync.set({
         queue: compressQueueForSync(queue),
         playedQueue: compressQueueForSync(playedQueue),
         currentPlayingId,
@@ -154,12 +152,12 @@ async function saveState() {
 }
 
 async function performCloudSync() {
-  const settings = await api.storage.local.get("storageMode");
-  if (settings.storageMode !== "sync" || isSyncing || !api.storage.sync) return;
+  const settings = await browser.storage.local.get("storageMode");
+  if (settings.storageMode !== "sync" || isSyncing || !browser.storage.sync) return;
 
   isSyncing = true;
   try {
-    const cloudData = await api.storage.sync.get(["queue", "playedQueue", "currentPlayingId"]);
+    const cloudData = await browser.storage.sync.get(["queue", "playedQueue", "currentPlayingId"]);
     const remoteQueue = (cloudData.queue || []).map(sanitizeVideoItem).filter(Boolean);
     const remotePlayed = (cloudData.playedQueue || []).map(sanitizeVideoItem).filter(Boolean);
 
@@ -184,10 +182,10 @@ async function performCloudSync() {
     }
 
     lastSyncedAt = Date.now();
-    await api.storage.local.set({ queue, playedQueue, currentPlayingId, lastSyncedAt });
+    await browser.storage.local.set({ queue, playedQueue, currentPlayingId, lastSyncedAt });
 
     isSelfSaving = true;
-    await api.storage.sync.set({
+    await browser.storage.sync.set({
       queue: compressQueueForSync(queue),
       playedQueue: compressQueueForSync(playedQueue),
       currentPlayingId,
@@ -246,7 +244,7 @@ async function addVideoToQueue(newVideo, targetIndex = null) {
   renderQueue();
   highlightVideoItem(videoId);
 
-  const settings = await api.storage.local.get("storageMode");
+  const settings = await browser.storage.local.get("storageMode");
   if (settings.storageMode === "sync") await performCloudSync();
 }
 
@@ -255,22 +253,22 @@ function compressQueueForSync(queueArray) {
 }
 
 async function getStorageEngine() {
-  const settings = await api.storage.local.get(["storageMode", "afterPlay"]);
-  const isSync = settings.storageMode === "sync" && !!api.storage.sync;
+  const settings = await browser.storage.local.get(["storageMode", "afterPlay"]);
+  const isSync = settings.storageMode === "sync" && !!browser.storage.sync;
   const keepPlayed = (settings.afterPlay || "remove") === "keep";
 
   if (cloudSyncToggle) cloudSyncToggle.checked = isSync;
   if (keepPlayedToggle) keepPlayedToggle.checked = keepPlayed;
 
-  return isSync ? api.storage.sync : api.storage.local;
+  return isSync ? browser.storage.sync : browser.storage.local;
 }
 
 async function loadQueue() {
   activeStorage = await getStorageEngine();
-  const settings = await api.storage.local.get(["storageMode", "lastSyncedAt"]);
+  const settings = await browser.storage.local.get(["storageMode", "lastSyncedAt"]);
   lastSyncedAt = settings.lastSyncedAt || null;
 
-  const localData = await api.storage.local.get(["queue", "playedQueue", "currentPlayingId", "isPlaying", "autoplay"]);
+  const localData = await browser.storage.local.get(["queue", "playedQueue", "currentPlayingId", "isPlaying", "autoplay"]);
   queue = (localData.queue || []).map(sanitizeVideoItem).filter(Boolean);
   playedQueue = (localData.playedQueue || []).map(sanitizeVideoItem).filter(Boolean);
   currentPlayingId = localData.currentPlayingId || null;
@@ -281,7 +279,7 @@ async function loadQueue() {
   renderQueue();
   updateSyncStatusUI();
 
-  if (settings.storageMode === "sync" && api.storage.sync) {
+  if (settings.storageMode === "sync" && browser.storage.sync) {
     await performCloudSync();
   }
 }
@@ -292,23 +290,23 @@ autoplayToggle.addEventListener("change", async (e) => {
 
 cloudSyncToggle.addEventListener("change", async (e) => {
   const newMode = e.target.checked ? "sync" : "local";
-  await api.storage.local.set({ storageMode: newMode });
+  await browser.storage.local.set({ storageMode: newMode });
   if (newMode === "sync") await performCloudSync();
   else { updateSyncStatusUI(); loadQueue(); }
 });
 
 keepPlayedToggle.addEventListener("change", async (e) => {
-  await api.storage.local.set({ afterPlay: e.target.checked ? "keep" : "remove" });
+  await browser.storage.local.set({ afterPlay: e.target.checked ? "keep" : "remove" });
   renderQueue();
 });
 
-api.storage.onChanged.addListener((changes) => {
+browser.storage.onChanged.addListener((changes) => {
   if (isSelfSaving) return;
   if (changes.isPlaying) updatePlayButtonUI(!!changes.isPlaying.newValue);
   if (changes.queue || changes.playedQueue || changes.currentPlayingId) loadQueue();
 });
 
-api.runtime.onMessage.addListener((message) => {
+browser.runtime.onMessage.addListener((message) => {
   if (message.type === "ADD_TO_QUEUE" && message.video) {
     addVideoToQueue(message.video);
     return;
@@ -327,11 +325,11 @@ clearBtn.addEventListener("click", async () => {
     await saveState();
     renderQueue();
 
-    const settings = await api.storage.local.get("storageMode");
-    if (settings.storageMode === "sync" && api.storage.sync) {
-      await api.storage.sync.set({ queue, playedQueue, currentPlayingId });
+    const settings = await browser.storage.local.get("storageMode");
+    if (settings.storageMode === "sync" && browser.storage.sync) {
+      await browser.storage.sync.set({ queue, playedQueue, currentPlayingId });
       lastSyncedAt = Date.now();
-      await api.storage.local.set({ lastSyncedAt });
+      await browser.storage.local.set({ lastSyncedAt });
       updateSyncStatusUI();
     }
   }
@@ -464,7 +462,7 @@ function createVideoItem(item, index, isPlayed) {
 
           await saveState();
           renderQueue();
-          const settings = await api.storage.local.get("storageMode");
+          const settings = await browser.storage.local.get("storageMode");
           if (settings.storageMode === "sync") await performCloudSync();
         } else {
           const videoId = extractVideoId(rawData);
@@ -511,10 +509,10 @@ async function playVideo(item, isPlayed = false) {
   await saveState();
   renderQueue();
 
-  const settings = await api.storage.local.get("storageMode");
+  const settings = await browser.storage.local.get("storageMode");
   if (settings.storageMode === "sync") await performCloudSync();
 
-  api.runtime.sendMessage({
+  browser.runtime.sendMessage({
     type: "PLAY_VIDEO",
     url: sanitizedItem.url,
     focus: false,
@@ -522,21 +520,21 @@ async function playVideo(item, isPlayed = false) {
 }
 
 playPauseBtn.addEventListener("click", async () => {
-  const data = await api.storage.local.get(["queue", "currentPlayingId"]);
+  const data = await browser.storage.local.get(["queue", "currentPlayingId"]);
   const currentQueue = (data.queue || []).map(sanitizeVideoItem).filter(Boolean);
 
   if (!data.currentPlayingId && currentQueue.length > 0) {
     playVideo(currentQueue[0]);
     return;
   }
-  api.runtime.sendMessage({ type: "CONTROL_PLAYER", command: "TOGGLE" });
+  browser.runtime.sendMessage({ type: "CONTROL_PLAYER", command: "TOGGLE" });
 });
 
 nextBtn.addEventListener("click", async () => {
-  const data = await api.storage.local.get(["queue", "playedQueue", "currentPlayingId"]);
+  const data = await browser.storage.local.get(["queue", "playedQueue", "currentPlayingId"]);
   let q = (data.queue || []).map(sanitizeVideoItem).filter(Boolean);
   let pq = (data.playedQueue || []).map(sanitizeVideoItem).filter(Boolean);
-  const afterPlayMode = (await api.storage.local.get("afterPlay")).afterPlay || "remove";
+  const afterPlayMode = (await browser.storage.local.get("afterPlay")).afterPlay || "remove";
 
   if (q.length === 0) return;
 
@@ -556,24 +554,24 @@ nextBtn.addEventListener("click", async () => {
     playedQueue = pq;
     currentPlayingId = null;
     isSelfSaving = true;
-    await api.storage.local.set({ queue, playedQueue, currentPlayingId, isPlaying: false });
+    await browser.storage.local.set({ queue, playedQueue, currentPlayingId, isPlaying: false });
     setTimeout(() => { isSelfSaving = false; }, 200);
     renderQueue();
   }
 
-  const settings = await api.storage.local.get("storageMode");
+  const settings = await browser.storage.local.get("storageMode");
   if (settings.storageMode === "sync") await performCloudSync();
 });
 
 async function loadFoldState() {
-  const settings = await api.storage.local.get("isPlayedSectionOpen");
+  const settings = await browser.storage.local.get("isPlayedSectionOpen");
   isPlayedSectionOpen = settings.isPlayedSectionOpen || false;
   updateFoldUI();
 }
 
 playedToggleHeader.addEventListener("click", async () => {
   isPlayedSectionOpen = !isPlayedSectionOpen;
-  await api.storage.local.set({ isPlayedSectionOpen });
+  await browser.storage.local.set({ isPlayedSectionOpen });
   updateFoldUI();
 });
 
