@@ -256,3 +256,39 @@ browser.runtime.onMessage.addListener((message, sender) => {
     }
   })();
 });
+
+// Hotkey Command Listener (Alt+Q)
+browser.commands.onCommand.addListener(async (command) => {
+  if (command === "add-to-queue-hotkey") {
+    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (!activeTab || !activeTab.id || !activeTab.url?.includes("youtube.com")) return;
+
+    try {
+      // Ask content script for hovered video or current page video
+      const response = await browser.tabs.sendMessage(activeTab.id, { command: "GET_HOVERED_OR_CURRENT_VIDEO" });
+      const videoId = response?.videoId || extractVideoId(activeTab.url);
+
+      if (videoId) {
+        const title = await fetchVideoTitle(videoId);
+        await safeAddToQueue({
+          id: videoId,
+          title,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        });
+      }
+    } catch (e) {
+      // Fallback: If content script doesn't respond, add current active tab URL
+      const videoId = extractVideoId(activeTab.url);
+      if (videoId) {
+        const title = await fetchVideoTitle(videoId);
+        await safeAddToQueue({
+          id: videoId,
+          title,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        });
+      }
+    }
+  }
+});
