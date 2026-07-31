@@ -138,7 +138,7 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
-browser.runtime.onInstalled.addListener(() => {
+browser.runtime.onInstalled.addListener((details) => {
   browser.contextMenus.create({
     id: "add-to-queue",
     title: "Add YouTube link to Queue",

@@ -1,18 +1,16 @@
 function loadActiveShortcuts() {
-  const api = typeof browser !== "undefined" ? browser : chrome;
-
-  if (!api || !api.commands || !api.commands.getAll) {
+  if (!browser || !browser.commands || !browser.commands.getAll) {
     const kbdEl = document.getElementById("shortcut-add-queue");
     if (kbdEl) kbdEl.textContent = "Alt + Q"; // Fallback if API unavailable
     return;
   }
 
-  api.commands.getAll((commands) => {
+  browser.commands.getAll((commands) => {
     console.log("Registered Manifest Commands:", commands); // Check F12 console to inspect names
 
     // Finds either 'add-to-queue', '_execute_action', or falls back to the first custom command
-    const targetCommand = 
-      commands.find((c) => c.name === "add-to-queue") ||
+    const targetCommand =
+      commands.find((c) => c.name === "add-to-queue-hotkey") ||
       commands.find((c) => c.name !== "_execute_action") ||
       commands[0];
 
@@ -47,7 +45,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Dynamically load version from manifest.json
   const manifestData = browser.runtime.getManifest();
-  const versionElement = document.getElementById("app-version");
+  const versionElement = document.getElementById("version-badge");
   if (versionElement && manifestData.version) {
     // If you use "version_name" in manifest, it will prefer that over "version"
     const displayVersion = manifestData.version_name || manifestData.version;

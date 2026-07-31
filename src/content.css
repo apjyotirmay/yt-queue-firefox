@@ -201,6 +201,12 @@ button:disabled {
 .btn-clear:not(:disabled):hover {
   background: var(--btn-clear-hover);
 }
+.btn-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1/1;
+}
 .setting-row {
   display: flex;
   justify-content: space-between;
@@ -332,15 +338,6 @@ li.drag-over-below {
 li.dragging {
   opacity: 0.4;
 }
-
-/* #played-toggle-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        cursor: pointer;
-        user-select: none;
-        padding: 6px 8px;
-      } */
 
 .header-left {
   display: flex;
