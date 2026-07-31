@@ -4,6 +4,40 @@
 
   console.log("[QueueExt:Content] Script loaded on page.");
 
+  // --- Webpage Toast Renderer ---
+  function showToast(message = "✓ Added to Queue") {
+    let toast = document.getElementById("yt-ext-toast");
+    if (toast) toast.remove();
+
+    toast = document.createElement("div");
+    toast.id = "yt-ext-toast";
+    toast.textContent = message;
+    toast.style.cssText = `
+      position: fixed !important;
+      bottom: 24px !important;
+      right: 24px !important;
+      background: #ff0000 !important;
+      color: #ffffff !important;
+      padding: 10px 16px !important;
+      font-size: 13px !important;
+      font-weight: bold !important;
+      font-family: Roboto, Arial, sans-serif !important;
+      border-radius: 6px !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+      z-index: 9999999 !important;
+      transition: opacity 0.2s ease !important;
+      pointer-events: none !important;
+      opacity: 1 !important;
+    `;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      setTimeout(() => toast.remove(), 200);
+    }, 1200);
+  }
+
   // --- Hotkeys & Hover Tracking ---
   let hoveredVideoId = null;
 
@@ -137,6 +171,12 @@
   if (initialVideo) attachVideoListeners(initialVideo);
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Show toast when triggered by background/extension events
+    if (message.type === "SHOW_TOAST") {
+      showToast(message.message || "✓ Added to Queue");
+      return;
+    }
+
     // Handle queries from background.js asking for the hovered/active video ID (for Alt+Q)
     if (message.command === "GET_HOVERED_OR_CURRENT_VIDEO") {
       const targetId = hoveredVideoId || extractVideoId(window.location.href);

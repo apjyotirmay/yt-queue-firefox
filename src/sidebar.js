@@ -203,7 +203,7 @@ async function performCloudSync() {
 
 async function addVideoToQueue(newVideo, targetIndex = null) {
   if (!newVideo || !newVideo.id) return;
-  const videoId = newVideo.id;
+  const videoId = String(newVideo.id).trim();
 
   if (pendingAdds.has(videoId)) return;
   pendingAdds.add(videoId);
@@ -213,9 +213,9 @@ async function addVideoToQueue(newVideo, targetIndex = null) {
     newVideo.title = await fetchVideoTitle(videoId);
   }
 
-  const normalizedToAdd = sanitizeVideoItem({ ...newVideo, title: newVideo.title });
-  const existingIdx = queue.findIndex((item) => item.id === videoId);
-  const playedIdx = playedQueue.findIndex((item) => item.id === videoId);
+  const normalizedToAdd = sanitizeVideoItem({ ...newVideo, id: videoId, title: newVideo.title });
+  const existingIdx = queue.findIndex((item) => String(item.id).trim() === videoId);
+  const playedIdx = playedQueue.findIndex((item) => String(item.id).trim() === videoId);
 
   if (playedIdx !== -1) {
     const [restored] = playedQueue.splice(playedIdx, 1);
@@ -238,6 +238,7 @@ async function addVideoToQueue(newVideo, targetIndex = null) {
   } else {
     if (targetIndex !== null) queue.splice(targetIndex, 0, normalizedToAdd);
     else queue.push(normalizedToAdd);
+    showToast("✓ Added to Queue");
   }
 
   await saveState();
@@ -307,10 +308,7 @@ browser.storage.onChanged.addListener((changes) => {
 });
 
 browser.runtime.onMessage.addListener((message) => {
-  if (message.type === "ADD_TO_QUEUE" && message.video) {
-    addVideoToQueue(message.video);
-    return;
-  }
+  // Storage changes will automatically trigger loadQueue() via browser.storage.onChanged.
   if (message.type === "PLAYER_STATE_CHANGED" || message.type === "PLAYER_STATUS") {
     if (message.isPlaying !== undefined) updatePlayButtonUI(!!message.isPlaying);
   }

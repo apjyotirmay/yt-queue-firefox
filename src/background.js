@@ -34,44 +34,64 @@ async function fetchVideoTitle(videoId) {
   return `Video (${videoId})`;
 }
 
+async function notifyVideoAdded(messageText = "✓ Added to Queue") {
+  try {
+    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (activeTab?.id) {
+      browser.tabs.sendMessage(activeTab.id, { type: "SHOW_TOAST", message: messageText }).catch(() => {});
+    }
+  } catch (e) {}
+
+  browser.runtime.sendMessage({ type: "SHOW_TOAST", message: messageText }).catch(() => {});
+}
+
 async function safeAddToQueue(videoToAdd) {
   console.log("[QueueExt:Background] safeAddToQueue called with:", videoToAdd);
+  if (!videoToAdd || !videoToAdd.id) return;
+
+  const videoId = String(videoToAdd.id).trim();
   const settings = await browser.storage.local.get("storageMode");
   const isSync = settings.storageMode === "sync";
 
   const normalizedVideo = {
-    ...videoToAdd,
-    url: videoToAdd.url || `https://www.youtube.com/watch?v=${videoToAdd.id}`,
-    thumbnail: videoToAdd.thumbnail || `https://i.ytimg.com/vi/${videoToAdd.id}/hqdefault.jpg`,
+    id: videoId,
+    title: videoToAdd.title || "YouTube Video",
+    url: videoToAdd.url || `https://www.youtube.com/watch?v=${videoId}`,
+    thumbnail: videoToAdd.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
   };
 
-  let currentQueue = [];
-  if (isSync) {
-    const cloudData = await browser.storage.sync.get(["queue"]);
-    const localData = await browser.storage.local.get(["queue"]);
-    const remoteQueue = cloudData.queue || [];
-    const localQueue = localData.queue || [];
-    const localIds = new Set(localQueue.map((item) => item.id));
-    const newRemoteQueue = remoteQueue.filter((item) => !localIds.has(item.id));
-    currentQueue = [...localQueue, ...newRemoteQueue];
+  let localData = await browser.storage.local.get(["queue", "playedQueue"]);
+  let currentQueue = localData.queue || [];
+  let playedQueue = localData.playedQueue || [];
+
+  // Check if video exists in played history and restore it if needed
+  const playedIdx = playedQueue.findIndex((item) => String(item.id).trim() === videoId);
+  let statusToast = "✓ Added to Queue";
+
+  if (playedIdx !== -1) {
+    const [restored] = playedQueue.splice(playedIdx, 1);
+    currentQueue.push({ ...restored, ...normalizedVideo });
+    statusToast = "Restored video from played history";
   } else {
-    const localData = await browser.storage.local.get("queue");
-    currentQueue = localData.queue || [];
+    const existingIndex = currentQueue.findIndex((i) => String(i.id).trim() === videoId);
+
+    if (existingIndex !== -1) {
+      currentQueue[existingIndex] = { ...currentQueue[existingIndex], ...normalizedVideo };
+      statusToast = "Video already in queue";
+    } else {
+      currentQueue.push(normalizedVideo);
+    }
   }
 
-  const existingIndex = currentQueue.findIndex((i) => i.id === normalizedVideo.id);
-  if (existingIndex !== -1) {
-    currentQueue[existingIndex] = { ...currentQueue[existingIndex], ...normalizedVideo };
-  } else {
-    currentQueue.push(normalizedVideo);
-  }
+  await browser.storage.local.set({ queue: currentQueue, playedQueue });
 
-  await browser.storage.local.set({ queue: currentQueue });
-  if (isSync) {
+  if (isSync && browser.storage.sync) {
     const compressedSyncQueue = currentQueue.map((item) => ({ id: item.id, title: item.title }));
-    await browser.storage.sync.set({ queue: compressedSyncQueue });
+    await browser.storage.sync.set({ queue: compressedSyncQueue, playedQueue }).catch(() => {});
   }
+
   console.log("[QueueExt:Background] Updated queue count:", currentQueue.length);
+  await notifyVideoAdded(statusToast);
 }
 
 async function loadInPlayerTab(url, active = true) {
@@ -232,7 +252,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
             browser.runtime.sendMessage({
               type: "PLAYER_STATE_CHANGED",
               isPlaying: message.isPlaying
-            }).catch(() => {}); // Ignore error if sidebar is closed
+            }).catch(() => {});
           }
           break;
         }
