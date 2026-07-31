@@ -7,15 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [3.5.2] - 2026-07-31
+## [3.6.0] &ndash; July 31, 2026
+
+### New Features
+
+* **Dedicated "Clear Played" Option:** Added a targeted clear button inside the Played section header to wipe watch history independently, while keeping the main clear button focused on full queue resets.
+
+### Fixes & Improvements
+
+* **Cross-Browser API Standardization:** Migrated extension calls from `chrome.*` to standard webextension `browser.*` APIs for improved Firefox compatibility.
+* **Player UI State Sync:** Resolved an issue in Firefox where the play/pause button UI state wasn't updating properly during active playback.
+* **Toast Notification Restoration:** Restored missing notification toasts across background and content scripts to ensure visual confirmation when queueing videos.
+* **Hotkey Functionality:** Restored keyboard shortcut handlers (`Alt+Q` / `Alt+Click`) for quick video queueing from active YouTube tabs.
+
+
+## [3.5.2] &ndash; 2026-07-31
 - Fix: Firefox playback button
 
-## [3.5.1] - 2026-07-31
+## [3.5.1] &ndash; 2026-07-31
 - Ported to Google Chrome
 - Optimized storage for sync - increases queue size
 - Fixes conflict on cloud sync with local queue
 
-## [3.5.0] - 2026-07-29
+## [3.5.0] &ndash; 2026-07-29
 
 ### Added
 - Light/Dark mode support[cite: 3].
@@ -25,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - General UI enhancements[cite: 3].
 - Player controls are now pinned to be always visible[cite: 3].
 
-## [3.4.0] - 2026-07-29
+## [3.4.0] &ndash; 2026-07-29
 
 ### Added
 - Cloud sync status indicator under the sync toggle displaying relative time (e.g., "Synced 5m ago").
@@ -39,14 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [3.3.0] - 2026-07-29
+## [3.3.0] &ndash; 2026-07-29
 
 ### Improved
 - Handling of duplicate video entries across queue mutations.
 
 ---
 
-## [3.2.0] - 2026-07-29
+## [3.2.0] &ndash; 2026-07-29
 
 ### Added
 - Visual drag-and-drop indicators/hints for queue reordering.
@@ -61,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [3.0.0] - 2026-07-28
+## [3.0.0] &ndash; 2026-07-28
 
 ### Added
 - Integrated player controls directly inside the extension sidebar.
@@ -70,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.2.0] - 2026-07-24
+## [2.2.0] &ndash; 2026-07-24
 
 ### Added
 - Dedicated Play and Clear Queue action buttons.
@@ -81,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2026-07-25
+## [1.0.0] &ndash; 2026-07-25
 
 ### Added
 - Initial release.
