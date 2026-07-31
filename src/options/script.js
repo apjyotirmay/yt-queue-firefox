@@ -54,17 +54,24 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const openShortcutsBtn = document.getElementById("open-shortcuts-btn");
 
-  if (openShortcutsBtn) {
-    openShortcutsBtn.addEventListener("click", () => {
-      // const api = typeof browser !== "undefined" ? browser : chrome;
+    if (openShortcutsBtn) {
+      openShortcutsBtn.addEventListener("click", () => {
+        const isFirefox = typeof InstallTrigger !== "undefined" || navigator.userAgent.includes("Firefox");
 
-      // Determine correct URL scheme (Chrome vs Firefox)
-      const isFirefox = typeof InstallTrigger !== "undefined" || navigator.userAgent.includes("Firefox");
-      const shortcutsUrl = isFirefox ? "about:addons" : "chrome://extensions/shortcuts";
-
-      browser.tabs.create({ url: shortcutsUrl });
-    });
-  }
+        if (isFirefox) {
+          // Firefox restricts opening about: URLs via tabs.create()
+          alert(
+            "In Firefox, please manage keyboard shortcuts manually:\n\n" +
+            "1. Open a new tab and go to about:addons\n" +
+            "2. Click the gear icon (⚙️) at the top right\n" +
+            "3. Select 'Manage Extension Shortcuts'"
+          );
+        } else {
+          // Chromium-based browsers allow opening chrome://extensions/shortcuts
+          browser.tabs.create({ url: "chrome://extensions/shortcuts" });
+        }
+      });
+    }
 
   // Handle Storage Mode Switch
   storageModeSelect.addEventListener("change", async (e) => {
