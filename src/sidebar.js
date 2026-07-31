@@ -14,6 +14,7 @@ const playedToggleHeader = document.getElementById("played-toggle-header");
 const playedListContainer = document.getElementById("played-list-container");
 const playedArrow = document.getElementById("played-arrow");
 const playedCount = document.getElementById("played-count");
+const clearPlayedBtn = document.getElementById("clear-played-btn");
 
 let queue = [];
 let playedQueue = [];
@@ -314,9 +315,11 @@ browser.runtime.onMessage.addListener((message) => {
   }
 });
 
+// Main Clear Button -> Wipes Entire Queue (Unplayed + Played)
 clearBtn.addEventListener("click", async () => {
   if (queue.length === 0 && playedQueue.length === 0) return;
-  if (confirm("Are you sure you want to clear your video queue?")) {
+
+  if (confirm("Are you sure you want to clear the entire queue (including played videos)?")) {
     queue = [];
     playedQueue = [];
     currentPlayingId = null;
@@ -326,6 +329,31 @@ clearBtn.addEventListener("click", async () => {
     const settings = await browser.storage.local.get("storageMode");
     if (settings.storageMode === "sync" && browser.storage.sync) {
       await browser.storage.sync.set({ queue, playedQueue, currentPlayingId });
+      lastSyncedAt = Date.now();
+      await browser.storage.local.set({ lastSyncedAt });
+      updateSyncStatusUI();
+    }
+  }
+});
+
+// Targeted Clear Played Button -> Wipes Only Played History
+clearPlayedBtn.addEventListener("click", async () => {
+  if (playedQueue.length === 0) return;
+
+  if (confirm("Are you sure you want to clear your played video history?")) {
+    playedQueue = [];
+
+    // If the currently playing video was somehow pointing to a played item, clear reference
+    if (currentPlayingId && !queue.some(item => item.id === currentPlayingId)) {
+      currentPlayingId = null;
+    }
+
+    await saveState();
+    renderQueue();
+
+    const settings = await browser.storage.local.get("storageMode");
+    if (settings.storageMode === "sync" && browser.storage.sync) {
+      await browser.storage.sync.set({ playedQueue });
       lastSyncedAt = Date.now();
       await browser.storage.local.set({ lastSyncedAt });
       updateSyncStatusUI();
@@ -356,12 +384,16 @@ function renderQueue() {
 
   queue.forEach((item, index) => listEl.appendChild(createVideoItem(item, index, false)));
 
+  // Played Section & Clear Played Visibility Logic
   if (keepPlayedToggle.checked && playedQueue.length > 0) {
     playedSection.style.display = "block";
+    clearPlayedBtn.style.display = "inline-block";
+    clearPlayedBtn.disabled = playedQueue.length === 0;
     playedCount.textContent = playedQueue.length;
     playedQueue.forEach((item, index) => playedListEl.appendChild(createVideoItem(item, index, true)));
   } else {
     playedSection.style.display = "none";
+    clearPlayedBtn.style.display = "none";
   }
 
   updateFoldUI();
@@ -593,6 +625,11 @@ function updatePlayButtonUI(playing) {
     playPauseBtn.classList.remove("playing-state");
   }
 }
+
+// Prevent clicking "Clear Played" from toggling the collapsible section open/closed
+clearPlayedBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+});
 
 setInterval(updateSyncStatusUI, 10000);
 loadQueue();

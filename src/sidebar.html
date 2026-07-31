@@ -173,6 +173,7 @@
       .btn-clear {
         background: var(--btn-clear-bg);
         color: var(--btn-clear-text);
+        border: 1px solid var(--border-color);
       }
       .btn-clear:not(:disabled):hover {
         background: var(--btn-clear-hover);
@@ -227,6 +228,7 @@
         letter-spacing: 0.5px;
         color: var(--text-muted);
         margin: 12px 0 6px 0;
+        font-weight: bold;
       }
       ul {
         list-style: none;
@@ -307,6 +309,56 @@
       li.dragging {
         opacity: 0.4;
       }
+
+      /* #played-toggle-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        user-select: none;
+        padding: 6px 8px;
+      } */
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      #clear-played-btn-wrapper {
+        text-align: end;
+        margin-top: 12px;
+      }
+
+      #clear-played-btn {
+        background: transparent;
+        border: 1px solid #aaa;
+        color: #aaa;
+        font-size: 11px;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: color 0.2s, background-color 0.2s;
+      }
+
+      #clear-played-btn:hover {
+        color: #ff4e4e;
+        border-color: #ff4e4e;
+        background-color: rgba(255, 78, 78, 0.1);
+      }
+
+      #clear-played-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      #played-arrow {
+        font-size: 1.2rem;
+      }
+
+      .mt-0 {
+        margin-top: 0 !important;
+      }
     </style>
   </head>
   <body>
@@ -353,8 +405,12 @@
     </div>
 
     <div id="played-section" style="display: none">
+      <div id="clear-played-btn-wrapper">
+        <button id="clear-played-btn" class="text-btn" title="Clear played history">Clear Played</button>
+      </div>
+
       <!-- Clickable Foldable Header -->
-      <div class="section-title foldable-header" id="played-toggle-header">
+      <div class="section-title foldable-header mt-0" id="played-toggle-header">
         <span id="played-arrow">▸</span> Played Videos (<span id="played-count"
           >0</span
         >)
