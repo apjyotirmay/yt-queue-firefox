@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.7.0] &ndash; August 01, 2026
+### New Features
+
+* Settings & Options Page: Added a dedicated options page (options/index.html) to manage extension configurations, view settings, and customize your setup.
+* Import & Export Queue Data: Introduced data management tools allowing users to easily export and import their queue lists for backup or migration.
+* First-Install Redirect: Configured the extension to automatically open the options page upon fresh installation for a seamless initial onboard experience.
+
+### Improvements & Enhancements
+
+* Updated storage handling and fallback initialization.
+
 ## [3.6.1] &ndash; July 31, 2026
 
 ### Fixes & Improvements

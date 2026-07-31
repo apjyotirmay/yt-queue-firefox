@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouTube Queue Sidebar",
-  "version": "3.6.1",
+  "version": "3.7.0",
   "description": "YouTube queue manager with Alt+Click, Alt+Q, and Cloud Sync.",
   "permissions": ["storage", "contextMenus", "tabs", "activeTab"],
   "host_permissions": ["*://*.youtube.com/*"],
