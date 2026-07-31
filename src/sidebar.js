@@ -3,9 +3,9 @@ const playedListEl = document.getElementById("played-list");
 const playedSection = document.getElementById("played-section");
 const clearBtn = document.getElementById("clear-btn");
 const keepPlayedToggle = document.getElementById("keep-played-toggle");
-const cloudSyncToggle = document.getElementById("cloud-sync-toggle");
-const syncStatusRow = document.getElementById("sync-status-row");
+const syncIndicator = document.getElementById("sync-indicator");
 const syncStatusText = document.getElementById("sync-status-text");
+const syncTimeText = document.getElementById("sync-time-text");
 const counterBadge = document.getElementById("queue-counter");
 const playPauseBtn = document.getElementById("play-pause-btn");
 const nextBtn = document.getElementById("next-btn");
@@ -111,13 +111,26 @@ function formatRelativeTime(timestamp) {
   return `${Math.floor(diffHours / 24)}d ago`;
 }
 
-function updateSyncStatusUI() {
-  if (!cloudSyncToggle.checked) {
-    syncStatusRow.style.display = "none";
-    return;
+async function updateSyncStatusUI() {
+  const settings = await browser.storage.local.get(["storageMode", "lastSyncedAt"]);
+  const isSyncMode = settings.storageMode === "sync";
+  lastSyncedAt = settings.lastSyncedAt || null;
+
+  if (!syncIndicator || !syncStatusText) return;
+
+  if (isSyncMode) {
+    syncIndicator.classList.add("active");
+    syncStatusText.textContent = "Cloud Sync";
+    if (syncTimeText) {
+      syncTimeText.textContent = lastSyncedAt ? `Synced ${formatRelativeTime(lastSyncedAt)}` : "Not synced yet";
+    }
+  } else {
+    syncIndicator.classList.remove("active");
+    syncStatusText.textContent = "Local Mode";
+    if (syncTimeText) {
+      syncTimeText.textContent = "";
+    }
   }
-  syncStatusRow.style.display = "block";
-  syncStatusText.textContent = formatRelativeTime(lastSyncedAt);
 }
 
 async function saveState() {
@@ -144,6 +157,9 @@ async function saveState() {
         playedQueue: compressQueueForSync(playedQueue),
         currentPlayingId,
       });
+      lastSyncedAt = Date.now();
+      await browser.storage.local.set({ lastSyncedAt });
+      updateSyncStatusUI();
     } catch (err) {
       console.warn("[QueueExt:Sidebar] Sync update failed:", err);
     }
@@ -259,7 +275,6 @@ async function getStorageEngine() {
   const isSync = settings.storageMode === "sync" && !!browser.storage.sync;
   const keepPlayed = (settings.afterPlay || "remove") === "keep";
 
-  if (cloudSyncToggle) cloudSyncToggle.checked = isSync;
   if (keepPlayedToggle) keepPlayedToggle.checked = keepPlayed;
 
   return isSync ? browser.storage.sync : browser.storage.local;
@@ -274,7 +289,7 @@ async function loadQueue() {
   queue = (localData.queue || []).map(sanitizeVideoItem).filter(Boolean);
   playedQueue = (localData.playedQueue || []).map(sanitizeVideoItem).filter(Boolean);
   currentPlayingId = localData.currentPlayingId || null;
-  autoplayToggle.checked = localData.autoplay !== false;
+  if (autoplayToggle) autoplayToggle.checked = localData.autoplay !== false;
   isPlaying = !!localData.isPlaying;
 
   updatePlayButtonUI(isPlaying);
@@ -286,30 +301,27 @@ async function loadQueue() {
   }
 }
 
-autoplayToggle.addEventListener("change", async (e) => {
-  await activeStorage.set({ autoplay: e.target.checked });
-});
+if (autoplayToggle) {
+  autoplayToggle.addEventListener("change", async (e) => {
+    await activeStorage.set({ autoplay: e.target.checked });
+  });
+}
 
-cloudSyncToggle.addEventListener("change", async (e) => {
-  const newMode = e.target.checked ? "sync" : "local";
-  await browser.storage.local.set({ storageMode: newMode });
-  if (newMode === "sync") await performCloudSync();
-  else { updateSyncStatusUI(); loadQueue(); }
-});
+if (keepPlayedToggle) {
+  keepPlayedToggle.addEventListener("change", async (e) => {
+    await browser.storage.local.set({ afterPlay: e.target.checked ? "keep" : "remove" });
+    renderQueue();
+  });
+}
 
-keepPlayedToggle.addEventListener("change", async (e) => {
-  await browser.storage.local.set({ afterPlay: e.target.checked ? "keep" : "remove" });
-  renderQueue();
-});
-
-browser.storage.onChanged.addListener((changes) => {
+browser.storage.onChanged.addListener((changes, areaName) => {
   if (isSelfSaving) return;
+  if (areaName === "local" && changes.storageMode) updateSyncStatusUI();
   if (changes.isPlaying) updatePlayButtonUI(!!changes.isPlaying.newValue);
   if (changes.queue || changes.playedQueue || changes.currentPlayingId) loadQueue();
 });
 
 browser.runtime.onMessage.addListener((message) => {
-  // Storage changes will automatically trigger loadQueue() via browser.storage.onChanged.
   if (message.type === "PLAYER_STATE_CHANGED" || message.type === "PLAYER_STATUS") {
     if (message.isPlaying !== undefined) updatePlayButtonUI(!!message.isPlaying);
   }
@@ -343,7 +355,6 @@ clearPlayedBtn.addEventListener("click", async () => {
   if (confirm("Are you sure you want to clear your played video history?")) {
     playedQueue = [];
 
-    // If the currently playing video was somehow pointing to a played item, clear reference
     if (currentPlayingId && !queue.some(item => item.id === currentPlayingId)) {
       currentPlayingId = null;
     }
@@ -360,6 +371,17 @@ clearPlayedBtn.addEventListener("click", async () => {
     }
   }
 });
+
+const settingsBtn = document.getElementById("settings-btn");
+if (settingsBtn) {
+  settingsBtn.addEventListener("click", () => {
+    if (browser.runtime.openOptionsPage) {
+      browser.runtime.openOptionsPage();
+    } else {
+      window.open(browser.runtime.getURL("options/index.html"));
+    }
+  });
+}
 
 function renderQueue() {
   while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
@@ -384,8 +406,7 @@ function renderQueue() {
 
   queue.forEach((item, index) => listEl.appendChild(createVideoItem(item, index, false)));
 
-  // Played Section & Clear Played Visibility Logic
-  if (keepPlayedToggle.checked && playedQueue.length > 0) {
+  if (keepPlayedToggle && keepPlayedToggle.checked && playedQueue.length > 0) {
     playedSection.style.display = "block";
     clearPlayedBtn.style.display = "inline-block";
     clearPlayedBtn.disabled = playedQueue.length === 0;
@@ -599,13 +620,16 @@ async function loadFoldState() {
   updateFoldUI();
 }
 
-playedToggleHeader.addEventListener("click", async () => {
-  isPlayedSectionOpen = !isPlayedSectionOpen;
-  await browser.storage.local.set({ isPlayedSectionOpen });
-  updateFoldUI();
-});
+if (playedToggleHeader) {
+  playedToggleHeader.addEventListener("click", async () => {
+    isPlayedSectionOpen = !isPlayedSectionOpen;
+    await browser.storage.local.set({ isPlayedSectionOpen });
+    updateFoldUI();
+  });
+}
 
 function updateFoldUI() {
+  if (!playedListContainer || !playedArrow) return;
   if (isPlayedSectionOpen) {
     playedListContainer.classList.remove("collapsed");
     playedArrow.textContent = "▾";
@@ -626,7 +650,6 @@ function updatePlayButtonUI(playing) {
   }
 }
 
-// Prevent clicking "Clear Played" from toggling the collapsible section open/closed
 clearPlayedBtn.addEventListener("click", (e) => {
   e.stopPropagation();
 });

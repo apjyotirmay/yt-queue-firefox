@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube Queue Sidebar - Settings</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Branding Header -->
+      <header class="brand-header">
+        <div class="brand-identity">
+          <img
+            src="../icons/icon128.png"
+            alt="YouTube Queue Sidebar Logo"
+            class="brand-logo"
+          />
+          <div class="brand-text">
+            <div class="brand-title-row">
+              <h1>YouTube Queue Sidebar</h1>
+              <span class="version-badge">v3.6.1</span>
+            </div>
+            <p class="brand-tagline">
+              Manage sync behavior, back up your queues, or restore watch
+              history.
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <!-- Settings Content -->
+      <main class="settings-content">
+        <!-- Data Backup Card -->
+        <section class="card">
+          <div class="card-header">
+            <h2>Data Backup</h2>
+            <p class="description">
+              Export your active queue and watch history to a backup file, or
+              restore from a previously saved JSON snapshot.
+            </p>
+          </div>
+          <div class="button-group">
+            <button id="export-btn" class="btn primary">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              Export Queue JSON
+            </button>
+            <button id="import-btn" class="btn secondary">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Import Queue JSON
+            </button>
+            <input
+              type="file"
+              id="import-file-input"
+              accept=".json"
+              style="display: none"
+            />
+          </div>
+          <div id="status-message" class="status-message"></div>
+        </section>
+
+        <!-- Storage & Cloud Sync Card -->
+        <section class="card">
+          <div class="card-header">
+            <h2>Storage & Cloud Sync</h2>
+            <p class="description">
+              Choose where your queue data is stored across sessions and browser
+              profiles.
+            </p>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="storage-mode-select">Sync Mode</label>
+              <span class="subtext">
+                Sync mode automatically synchronizes your queue across logged-in
+                browser instances. Local mode keeps data restricted to this
+                machine.
+              </span>
+            </div>
+            <select id="storage-mode-select" class="select-input">
+              <option value="sync">Browser Sync (Cross-device)</option>
+              <option value="local">Local Storage (This device only)</option>
+            </select>
+          </div>
+        </section>
+
+        <!-- Keyboard Shortcuts Card -->
+        <section class="card">
+          <div class="card-header">
+            <h2>Keyboard Shortcuts</h2>
+            <p class="description">
+              Quickly manage default extension shortcuts or remap custom keybindings.
+            </p>
+          </div>
+          <div class="shortcut-list">
+            <div class="shortcut-item">
+              <span>Add hovered video / active tab to queue</span>
+              <kbd id="shortcut-add-queue">Loading...</kbd>
+            </div>
+            <div class="shortcut-item">
+              <span>Quick add clicked thumbnail</span>
+              <kbd>Alt + Click</kbd>
+            </div>
+          </div>
+
+          <div style="margin-top: 16px;">
+            <button id="open-shortcuts-btn" class="btn secondary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              Configure Chrome Shortcuts
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <!-- Footer -->
+      <footer class="settings-footer">
+        <p>YouTube Queue Sidebar</p>
+      </footer>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
